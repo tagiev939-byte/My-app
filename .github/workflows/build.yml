@@ -1,0 +1,57 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project AssemblyEmpire.xcodeproj \
+            -target AssemblyEmpire \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build -quiet
+
+      - name: Package IPA
+        run: |
+          APP="build/Release-iphoneos/AssemblyEmpire.app"
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry AssemblyEmpire.ipa Payload
+          ls -lh AssemblyEmpire.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AssemblyEmpire-ipa
+          path: AssemblyEmpire.ipa
+
+      - name: Publish to "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest AssemblyEmpire.ipa \
+            --target "${{ github.sha }}" \
+            --title "Assembly Empire — последняя сборка" \
+            --notes "Неподписанный IPA. Установите через Sideloadly или AltStore. Сборка: ${{ github.sha }}"
