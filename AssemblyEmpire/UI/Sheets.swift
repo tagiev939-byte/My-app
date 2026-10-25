@@ -283,7 +283,7 @@ struct MenuSheet: View {
                         SecondaryButton(title: "Новая игра", icon: "arrow.counterclockwise", tint: Theme.bad) {
                             confirmReset = true
                         }
-                        Text("Игра сохраняется автоматически")
+                        Text("Игра сохраняется автоматически · версия \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")")
                             .font(.game(12, .regular)).foregroundColor(.white.opacity(0.4))
                     }
                     .padding(20)
