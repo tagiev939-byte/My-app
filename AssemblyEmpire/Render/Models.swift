@@ -675,7 +675,7 @@ final class ModelLibrary {
                     b.addChildNode(Geo.sphere(0.03, flower, segments: 6).at(0.02, 0.22, -0.06))
                     b.addChildNode(Geo.sphere(0.03, MaterialCache.shared.pbr(0xF06A8A, rough: 0.6), segments: 6).at(-0.07, 0.19, 0.05))
                 }
-                bushTemplates.append(b)
+                bushTemplates.append(b.flattenedClone())
             }
         }
         return bushTemplates[variant % bushTemplates.count].clone()
@@ -694,7 +694,7 @@ final class ModelLibrary {
                     let leaf = k == 1 ? M.leaves3 : M.leaves
                     t.addChildNode(Geo.node(Geo.rock(radius: 0.27, squash: 1.0, seed: 100 + k), leaf).at(0, 0.52, 0))
                 }
-                treeTemplates.append(t)
+                treeTemplates.append(t.flattenedClone())
             }
         }
         return treeTemplates[variant % treeTemplates.count].clone()

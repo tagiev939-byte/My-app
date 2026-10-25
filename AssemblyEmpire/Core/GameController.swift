@@ -114,7 +114,7 @@ final class GameController: ObservableObject {
         var report: OfflineReport?
         var saved = false
         if let s = scenario {
-            w = (s == "title" || s == "tutorial") ? World.newGame(seed: 77) : World.demo()
+            w = (s == "title" || s == "tutorial" || s == "autoplay") ? World.newGame(seed: 77) : World.demo()
         } else if let loaded = GameController.load() {
             w = loaded
             saved = true
@@ -778,6 +778,10 @@ final class GameController: ObservableObject {
             rig.focus(SIMD3(25, 0, 25), distance: 60)
         case "icons":
             rig.focus(SIMD3(25, 0, 25), distance: 30)
+        case "autoplay":
+            world.money = 5_000
+            rig.focus(SIMD3(24.5, 0, 24), distance: 14)
+            runAutoplay()
         default:
             rig.focus(SIMD3(25, 0, 24.5), distance: 16)
         }
@@ -786,8 +790,70 @@ final class GameController: ObservableObject {
         if s != "title" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
                 guard let self else { return }
-                print("[QA] scenario=\(s) money=\(self.world.money) buildings=\(self.world.buildingCount) icons=\(self.icons.count)")
+                qaLog("scenario=\(s) money=\(self.world.money) buildings=\(self.world.buildingCount) icons=\(self.icons.count)")
             }
         }
     }
+
+    /// Drives the real input path (screen taps and drags) through the tutorial and a belt stroke.
+    private func runAutoplay() {
+        func at(_ t: Double, _ f: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t, execute: f)
+        }
+        func tapTile(_ x: Int, _ y: Int) {
+            guard let p = renderer.screenPoint(of: TilePos(x, y), height: 0.05) else {
+                qaLog("tile \(x),\(y) not on screen")
+                return
+            }
+            handleTap(p)
+        }
+        at(1.0) { self.advanceTutorial() }
+        at(1.5) { self.selectTool(.build(.drill)) }
+        at(2.0) { tapTile(23, 22) }
+        at(2.5) { tapTile(23, 23) }
+        at(3.0) { self.selectTool(.inspect) }
+        at(3.4) { tapTile(23, 21) }
+        at(3.8) {
+            if let p = self.selected { self.upgrade(p) }
+        }
+        at(4.3) { self.selectTool(.build(.smelter)) }
+        at(4.7) { tapTile(25, 23) }
+        at(5.2) { self.selectTool(.build(.conveyor)) }
+        at(5.6) {
+            let pts = [TilePos(21, 25), TilePos(23, 25), TilePos(26, 25), TilePos(26, 27)]
+                .compactMap { self.renderer.screenPoint(of: $0, height: 0.05) }
+            guard pts.count == 4 else { qaLog("stroke points off screen"); return }
+            self.dragBegan(start: pts[0], current: pts[0])
+            for k in 1..<pts.count {
+                for i in 1...6 {
+                    let t = CGFloat(i) / 6
+                    let a = pts[k - 1], b = pts[k]
+                    self.dragChanged(CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t))
+                }
+            }
+            self.dragEnded()
+        }
+        at(6.4) { self.selectTool(.inspect) }
+        at(7.0) {
+            let w = self.world
+            func kind(_ x: Int, _ y: Int) -> String {
+                guard let b = w.building(x, y) else { return "-" }
+                return "\(b.type.rawValue)/\(b.dir)"
+            }
+            var report = "drills=\(w.count(of: .drill)) smelters=\(w.count(of: .smelter)) belts=\(w.count(of: .conveyor)) "
+            report += "lvl=\(w.maxLevel) step=\(w.tutorialStep) "
+            report += "a=\(kind(23, 22)) b=\(kind(23, 23)) c=\(kind(25, 23)) "
+            report += "s=[\(kind(21, 25)) \(kind(23, 25)) \(kind(25, 25)) \(kind(26, 25)) \(kind(26, 26)) \(kind(26, 27))]"
+            qaLog("AUTOPLAY " + report)
+            self.showToast(report, icon: "ladybug.fill", tint: .cyan)
+        }
+    }
+}
+
+func qaLog(_ s: String) {
+    FileHandle.standardError.write(("[QA] " + s + "\n").data(using: .utf8)!)
+}
+
+extension GameController {
+    var debugDescription: String { "GameController" }
 }
