@@ -1,4 +1,4 @@
-name: Build unsigned IPA
+name: Build
 
 on:
   push:
@@ -9,7 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  ipa:
+    name: Unsigned IPA
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -29,14 +30,13 @@ jobs:
             -sdk iphoneos \
             SYMROOT="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build -quiet
+            build 2>&1 | grep -E "error:|warning: unre|BUILD|\*\*" || true
+          test -d build/Release-iphoneos/AssemblyEmpire.app
 
       - name: Package IPA
         run: |
-          APP="build/Release-iphoneos/AssemblyEmpire.app"
-          test -d "$APP"
           rm -rf Payload && mkdir Payload
-          cp -R "$APP" Payload/
+          cp -R build/Release-iphoneos/AssemblyEmpire.app Payload/
           zip -qry AssemblyEmpire.ipa Payload
           ls -lh AssemblyEmpire.ipa
 
@@ -55,3 +55,59 @@ jobs:
             --target "${{ github.sha }}" \
             --title "Assembly Empire — последняя сборка" \
             --notes "Неподписанный IPA. Установите через Sideloadly или AltStore. Сборка: ${{ github.sha }}"
+
+  screenshots:
+    name: Simulator screenshots
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project AssemblyEmpire.xcodeproj \
+            -target AssemblyEmpire \
+            -configuration Debug \
+            -sdk iphonesimulator ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log | grep -E "error:|BUILD|\*\*" || true
+          test -d build/Debug-iphonesimulator/AssemblyEmpire.app
+
+      - name: Run QA scenarios
+        run: |
+          APP=build/Debug-iphonesimulator/AssemblyEmpire.app
+          codesign --force --sign - --timestamp=none "$APP" || true
+          UDID=$(python3 .github/scripts/pick_sim.py)
+          echo "Simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p shots
+          for s in title factory inspector build closeup land upgrades goals menu tutorial wide; do
+            xcrun simctl launch --terminate-running-process \
+              --stdout="$PWD/shots/$s.log" --stderr="$PWD/shots/$s.err" \
+              "$UDID" com.tagiev.assemblyempire -scenario "$s" || echo "launch failed: $s"
+            sleep 10
+            xcrun simctl io "$UDID" screenshot "shots/$s.png" || true
+          done
+          ls -la shots
+
+      - name: Publish screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p shots
+          cp build.log shots/ 2>/dev/null || true
+          gh release delete screens --yes --cleanup-tag || true
+          gh release create screens shots/* --prerelease \
+            --target "${{ github.sha }}" \
+            --title "QA screenshots" \
+            --notes "Simulator screenshots for ${{ github.sha }}"

@@ -29,6 +29,9 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        UIRequiredDeviceCapabilities:
+          - arm64
+          - metal
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tagiev.assemblyempire

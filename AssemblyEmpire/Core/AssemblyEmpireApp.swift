@@ -2,18 +2,16 @@ import SwiftUI
 
 @main
 struct AssemblyEmpireApp: App {
-    @StateObject private var store = GameStore()
+    @StateObject private var game = GameController()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(store)
-                .preferredColorScheme(.dark)
-                .statusBarHidden(false)
+                .environmentObject(game)
         }
         .onChange(of: scenePhase) { phase in
-            if phase != .active { store.save() }
+            if phase != .active { game.save() }
         }
     }
 }
