@@ -230,8 +230,8 @@ final class SceneRenderer {
         scene.lightingEnvironment.contents = Tex.sky
         scene.lightingEnvironment.intensity = 1.25
         scene.fogColor = Tex.horizon
-        scene.fogStartDistance = 40
-        scene.fogEndDistance = 120
+        scene.fogStartDistance = 55
+        scene.fogEndDistance = 150
         scene.fogDensityExponent = 1.4
 
         // Sun
@@ -244,7 +244,7 @@ final class SceneRenderer {
         light.shadowColor = UIColor(white: 0, alpha: 0.55)
         light.shadowMapSize = CGSize(width: 2048, height: 2048)
         light.automaticallyAdjustsShadowProjection = true
-        light.maximumShadowDistance = 55
+        light.maximumShadowDistance = 70
         light.shadowCascadeCount = 2
         light.shadowRadius = 2.5
         sun.light = light
@@ -405,6 +405,7 @@ final class SceneRenderer {
         chunkDeco[c]?.removeFromParentNode()
         chunkDeco[c] = nil
         let container = SCNNode()
+        let plants = SCNNode()
         let owned = world.owned[c]
         let baseY = chunkTop(owned)
         let cx = c % World.chunks, cy = c / World.chunks
@@ -427,7 +428,16 @@ final class SceneRenderer {
                     }
                 } else {
                     let h = tileHash(x, y, 7, world.seed)
-                    let density = owned ? 0.05 : 0.3
+                    let density = owned ? 0.06 : 0.32
+                    if h >= density && h < density + 0.05 {
+                        let b = lib.bush(variant: Int(tileHash(x, y, 13, world.seed) * 3))
+                        let s = Float(0.8 + tileHash(x, y, 14, world.seed) * 0.6)
+                        b.scale = SCNVector3(s, s, s)
+                        b.position = SCNVector3(Float(x) + 0.25 + Float(tileHash(x, y, 15, world.seed)) * 0.5, baseY,
+                                                Float(y) + 0.25 + Float(tileHash(x, y, 16, world.seed)) * 0.5)
+                        b.eulerAngles.y = Float(h * 50)
+                        plants.addChildNode(b)
+                    }
                     if h < density {
                         let v = Int(tileHash(x, y, 8, world.seed) * 4)
                         let t = lib.tree(variant: v)
@@ -437,16 +447,19 @@ final class SceneRenderer {
                                                 baseY,
                                                 Float(y) + 0.5 + Float(tileHash(x, y, 12, world.seed) - 0.5) * 0.4)
                         t.eulerAngles.y = Float(h * 40)
-                        container.addChildNode(t)
+                        plants.addChildNode(t)
                     }
                 }
             }
         }
-        guard !container.childNodes.isEmpty else { return }
-        let flat = container.flattenedClone()
-        flat.castsShadow = true
-        decoRoot.addChildNode(flat)
-        chunkDeco[c] = flat
+        let group = SCNNode()
+        for part in [container, plants] where !part.childNodes.isEmpty {
+            let flat = part.flattenedClone()
+            flat.castsShadow = true
+            group.addChildNode(flat)
+        }
+        decoRoot.addChildNode(group)
+        chunkDeco[c] = group
     }
 
     func refreshDeco(at p: TilePos, _ world: World) {
@@ -645,8 +658,8 @@ final class SceneRenderer {
             Geo.cone(0.24, 0, 0.36, m, segments: 16).at(0, 0, 0),
             Geo.cylinder(0.09, 0.4, m, segments: 12).at(0, 0.38, 0)
         )
-        arrow.position = SCNVector3(0, 1.25, 0)
-        let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.35, z: 0, duration: 0.45), .moveBy(x: 0, y: -0.35, z: 0, duration: 0.45)])
+        arrow.position = SCNVector3(0, 0.8, 0)
+        let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.25, z: 0, duration: 0.45), .moveBy(x: 0, y: -0.25, z: 0, duration: 0.45)])
         bob.timingMode = .easeInEaseOut
         arrow.runAction(.repeatForever(bob))
         hint.addChildNode(arrow)

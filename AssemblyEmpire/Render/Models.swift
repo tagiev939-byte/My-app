@@ -184,7 +184,11 @@ enum Geo {
             }
         }
         let el = SCNGeometryElement(indices: idx, primitiveType: .triangles)
-        return SCNGeometry(sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: norms)],
+        // Texture coordinates keep the vertex format identical to SceneKit primitives,
+        // which flattenedClone() needs to merge geometries.
+        let uvs = [CGPoint](repeating: CGPoint(x: 0.5, y: 0.5), count: verts.count)
+        return SCNGeometry(sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: norms),
+                                     SCNGeometrySource(textureCoordinates: uvs)],
                            elements: [el])
     }
 
@@ -655,6 +659,26 @@ final class ModelLibrary {
         }
         rockGeos[r] = list
         return list[variant % list.count]
+    }
+
+    private var bushTemplates: [SCNNode] = []
+
+    func bush(variant: Int) -> SCNNode {
+        if bushTemplates.isEmpty {
+            let mats = [M.leaves, M.leaves3, MaterialCache.shared.pbr(0x8DBF4A, rough: 0.85)]
+            for k in 0..<3 {
+                let b = SCNNode()
+                b.addChildNode(Geo.node(Geo.rock(radius: 0.16, squash: 0.75, seed: 300 + k), mats[k]).at(0, 0.1, 0))
+                b.addChildNode(Geo.node(Geo.rock(radius: 0.11, squash: 0.8, seed: 310 + k), mats[(k + 1) % 3]).at(0.12, 0.07, 0.05))
+                if k == 2 {
+                    let flower = MaterialCache.shared.pbr(0xF2D24A, rough: 0.6)
+                    b.addChildNode(Geo.sphere(0.03, flower, segments: 6).at(0.02, 0.22, -0.06))
+                    b.addChildNode(Geo.sphere(0.03, MaterialCache.shared.pbr(0xF06A8A, rough: 0.6), segments: 6).at(-0.07, 0.19, 0.05))
+                }
+                bushTemplates.append(b)
+            }
+        }
+        return bushTemplates[variant % bushTemplates.count].clone()
     }
 
     func tree(variant: Int) -> SCNNode {

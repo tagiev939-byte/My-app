@@ -19,7 +19,7 @@ final class CameraRig {
     var orbiting = false
 
     static let minDistance: Float = 5
-    static let maxDistance: Float = 44
+    static let maxDistance: Float = 60
     static let fov: Float = 40
 
     init() {
@@ -35,7 +35,7 @@ final class CameraRig {
 
     var pitch: Float {
         let t = (distance - CameraRig.minDistance) / (CameraRig.maxDistance - CameraRig.minDistance)
-        return 0.6 + 0.52 * max(0, min(1, t))
+        return 0.6 + 0.55 * max(0, min(1, t))
     }
 
     func apply() {

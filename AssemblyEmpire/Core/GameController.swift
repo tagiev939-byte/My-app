@@ -775,7 +775,7 @@ final class GameController: ObservableObject {
             rig.focus(SIMD3(15, 0, 20), distance: 26)
             selectedChunk = 6
         case "wide":
-            rig.focus(SIMD3(25, 0, 25), distance: 40)
+            rig.focus(SIMD3(25, 0, 25), distance: 60)
         case "icons":
             rig.focus(SIMD3(25, 0, 25), distance: 30)
         default:
