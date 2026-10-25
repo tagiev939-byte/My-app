@@ -14,12 +14,13 @@ enum Tex {
     static func image(width: Int, height: Int, pixels: [UInt8]) -> UIImage {
         var data = pixels
         let cs = CGColorSpaceCreateDeviceRGB()
-        let ctx = data.withUnsafeMutableBytes { buf -> CGContext? in
-            CGContext(data: buf.baseAddress, width: width, height: height, bitsPerComponent: 8,
-                      bytesPerRow: width * 4, space: cs,
-                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        let cg = data.withUnsafeMutableBytes { buf -> CGImage? in
+            let ctx = CGContext(data: buf.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                bytesPerRow: width * 4, space: cs,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            return ctx?.makeImage()
         }
-        guard let c = ctx, let cg = c.makeImage() else { return UIImage() }
+        guard let cg else { return UIImage() }
         return UIImage(cgImage: cg)
     }
 

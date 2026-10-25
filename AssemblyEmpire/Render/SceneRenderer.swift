@@ -334,8 +334,14 @@ final class SceneRenderer {
     private func build(_ world: World) {
         for c in 0..<(World.chunks * World.chunks) {
             let box = SCNBox(width: 10, height: 1.2, length: 10, chamferRadius: 0)
-            box.materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, topMaterial(world, c), sideMaterial]
+            box.materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, MaterialCache.shared.pbr(0x86BF5E, rough: 0.95), sideMaterial]
             let n = SCNNode(geometry: box)
+            let top = SCNNode(geometry: Geo.beltQuad(width: 10, length: 10))
+            top.geometry?.materials = [topMaterial(world, c)]
+            top.position = SCNVector3(0, 0.603, 0)
+            top.name = "top"
+            top.castsShadow = false
+            n.addChildNode(top)
             let cx = c % World.chunks, cy = c / World.chunks
             n.position = SCNVector3(Float(cx * 10) + 5, chunkTop(world.owned[c]) - 0.6, Float(cy * 10) + 5)
             n.castsShadow = false
@@ -491,9 +497,7 @@ final class SceneRenderer {
 
     func chunkPurchased(_ c: Int, _ world: World) {
         let n = chunkNodes[c]
-        if let box = n.geometry as? SCNBox {
-            box.materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, topMaterial(world, c), sideMaterial]
-        }
+        n.childNode(withName: "top", recursively: false)?.geometry?.materials = [topMaterial(world, c)]
         let move = SCNAction.move(to: SCNVector3(n.position.x, chunkTop(true) - 0.6, n.position.z), duration: 0.6)
         move.timingMode = .easeOut
         n.runAction(move)

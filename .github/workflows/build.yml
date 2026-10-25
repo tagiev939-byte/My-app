@@ -105,7 +105,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p shots
-          cp build.log shots/ 2>/dev/null || true
+          { for f in shots/*.log shots/*.err; do echo "=== $f"; cat "$f"; done; } > shots/logs.txt 2>/dev/null || true
+          grep -E "error:|warning:" build.log | sort -u | head -200 > shots/build-issues.txt 2>/dev/null || true
+          echo "end" >> shots/build-issues.txt
+          rm -f shots/*.log shots/*.err
+          find shots -size 0 -delete
+          ls -la shots
           gh release delete screens --yes --cleanup-tag || true
           gh release create screens shots/* --prerelease \
             --target "${{ github.sha }}" \
