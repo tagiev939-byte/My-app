@@ -101,6 +101,58 @@ final class BuildingView {
         node.runAction(.rotateTo(x: 0, y: CGFloat(d.yaw), z: 0, duration: 0.18, usesShortestUnitArc: true))
     }
 
+    private var idleTime: Double = 0
+    private var bubble: SCNNode?
+    private var bubbleKind = 0
+
+    private static let bubbleGeometry: [Int: SCNGeometry] = {
+        var r: [Int: SCNGeometry] = [:]
+        for (k, img) in [(1, Tex.bubbleBlocked), (2, Tex.bubbleWaiting)] {
+            let g = SCNPlane(width: 0.42, height: 0.42)
+            let m = SCNMaterial()
+            m.lightingModel = .constant
+            m.diffuse.contents = img
+            m.isDoubleSided = true
+            m.writesToDepthBuffer = false
+            m.readsFromDepthBuffer = false
+            g.materials = [m]
+            r[k] = g
+        }
+        return r
+    }()
+
+    /// Shows "!" when the output is blocked and "?" when inputs are missing, after a short delay.
+    func updateStatus(_ b: Building, dt: Double) {
+        guard type == .drill || type.isMachine else { return }
+        idleTime = b.working ? 0 : idleTime + dt
+        var kind = 0
+        if idleTime > 3 {
+            let blocked = type == .drill ? b.output.count >= 2 : b.output.count >= 4
+            kind = blocked ? 1 : 2
+            if type == .drill && !blocked { kind = 1 }
+        }
+        guard kind != bubbleKind else { return }
+        bubbleKind = kind
+        bubble?.removeFromParentNode()
+        bubble = nil
+        guard kind != 0, let g = BuildingView.bubbleGeometry[kind] else { return }
+        let n = SCNNode(geometry: g)
+        let holder = SCNNode()
+        holder.position = SCNVector3(0, type == .drill ? 1.6 : 1.25, 0)
+        let bb = SCNBillboardConstraint()
+        holder.constraints = [bb]
+        holder.addChildNode(n)
+        n.renderingOrder = 50
+        n.castsShadow = false
+        let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.08, z: 0, duration: 0.6), .moveBy(x: 0, y: -0.08, z: 0, duration: 0.6)])
+        bob.timingMode = .easeInEaseOut
+        n.runAction(.repeatForever(bob))
+        n.scale = SCNVector3(0.1, 0.1, 0.1)
+        n.runAction(.scale(to: 1, duration: 0.2))
+        node.addChildNode(holder)
+        bubble = holder
+    }
+
     func update(_ b: Building) {
         let w = b.working
         guard w != working else { return }
@@ -710,7 +762,10 @@ final class SceneRenderer {
                                                                 SCNMatrix4MakeTranslation(waterPhase, waterPhase * 0.6, 0))
 
         for (idx, v) in views {
-            if let b = world.buildings[idx] { v.update(b) }
+            if let b = world.buildings[idx] {
+                v.update(b)
+                v.updateStatus(b, dt: dt)
+            }
         }
         syncItems(world)
     }

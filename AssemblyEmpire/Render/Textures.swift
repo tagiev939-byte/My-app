@@ -307,6 +307,28 @@ enum Tex {
         return base
     }
 
+    /// Status bubble shown above idle machines.
+    static func bubble(symbol: String, color: UIColor) -> UIImage {
+        render(96, 96) { c in
+            c.setFillColor(UIColor(white: 0, alpha: 0.25).cgColor)
+            c.fillEllipse(in: CGRect(x: 8, y: 12, width: 80, height: 80))
+            c.setFillColor(color.cgColor)
+            c.fillEllipse(in: CGRect(x: 8, y: 6, width: 80, height: 80))
+            c.setStrokeColor(UIColor.white.cgColor)
+            c.setLineWidth(6)
+            c.strokeEllipse(in: CGRect(x: 11, y: 9, width: 74, height: 74))
+            UIGraphicsPushContext(c)
+            let p = NSMutableParagraphStyle()
+            p.alignment = .center
+            (symbol as NSString).draw(in: CGRect(x: 0, y: 14, width: 96, height: 70),
+                                      withAttributes: [.font: roundedFont(50, .black), .foregroundColor: UIColor.white, .paragraphStyle: p])
+            UIGraphicsPopContext()
+        }
+    }
+
+    static let bubbleBlocked = bubble(symbol: "!", color: UIColor(hex: 0xF59E0B))
+    static let bubbleWaiting = bubble(symbol: "?", color: UIColor(hex: 0x64748B))
+
     static let coin: UIImage = render(64, 64) { c in
         let colors = [UIColor(hex: 0xFFE27A).cgColor, UIColor(hex: 0xD99A1E).cgColor] as CFArray
         let locs: [CGFloat] = [0, 1]
