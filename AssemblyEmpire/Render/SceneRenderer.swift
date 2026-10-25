@@ -16,11 +16,13 @@ final class BuildingView {
     private var productType: ItemType?
     private var working: Bool?
     private(set) var dir: Dir
+    let shape: BeltShape
 
-    init(_ b: Building, lib: ModelLibrary, world: World) {
+    init(_ b: Building, lib: ModelLibrary, world: World, shape: BeltShape = .straight) {
         type = b.type
         dir = b.dir
-        node = lib.building(b.type)
+        self.shape = shape
+        node = b.type == .conveyor ? lib.conveyor(shape) : lib.building(b.type)
         node.name = "b:\(b.x):\(b.y)"
         node.position = SCNVector3(Float(b.x) + 0.5, 0, Float(b.y) + 0.5)
         if b.type.hasDirection { node.eulerAngles.y = b.dir.yaw }
@@ -239,7 +241,7 @@ final class SceneRenderer {
         light.color = UIColor(red: 1.0, green: 0.95, blue: 0.86, alpha: 1)
         light.castsShadow = true
         light.shadowMode = .deferred
-        light.shadowColor = UIColor(white: 0, alpha: 0.42)
+        light.shadowColor = UIColor(white: 0, alpha: 0.55)
         light.shadowMapSize = CGSize(width: 2048, height: 2048)
         light.automaticallyAdjustsShadowProjection = true
         light.maximumShadowDistance = 55
@@ -322,8 +324,8 @@ final class SceneRenderer {
         cam.screenSpaceAmbientOcclusionRadius = 0.35
         cam.screenSpaceAmbientOcclusionNormalThreshold = 0.3
         cam.screenSpaceAmbientOcclusionDepthThreshold = 0.25
-        cam.saturation = 1.12
-        cam.contrast = 0.06
+        cam.saturation = 1.0
+        cam.contrast = 0.08
         cam.vignettingIntensity = 0.35
         cam.vignettingPower = 0.6
         sun.light?.shadowSampleCount = highQuality ? 8 : 2
@@ -334,7 +336,7 @@ final class SceneRenderer {
     private func build(_ world: World) {
         for c in 0..<(World.chunks * World.chunks) {
             let box = SCNBox(width: 10, height: 1.2, length: 10, chamferRadius: 0)
-            box.materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, MaterialCache.shared.pbr(0x86BF5E, rough: 0.95), sideMaterial]
+            box.materials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, MaterialCache.shared.pbr(0x78AE55, rough: 0.95), sideMaterial]
             let n = SCNNode(geometry: box)
             let top = SCNNode(geometry: Geo.beltQuad(width: 10, length: 10))
             top.geometry?.materials = [topMaterial(world, c)]
@@ -353,7 +355,17 @@ final class SceneRenderer {
             guard let b else { continue }
             addBuilding(b, world, animated: false)
         }
+        refreshAllShapes(world)
         updateSigns(world)
+    }
+
+    /// Compile shaders for every model up front so nothing pops in later.
+    func prewarm() {
+        guard let v = view else { return }
+        var nodes: [SCNNode] = BuildingType.allCases.map { lib.building($0) }
+        nodes += ItemType.allCases.map { lib.item($0) }
+        nodes += [lib.conveyor(.left), lib.conveyor(.right)]
+        v.prepare(nodes, completionHandler: nil)
     }
 
     func rebuild(_ world: World) {
@@ -446,9 +458,11 @@ final class SceneRenderer {
     func addBuilding(_ b: Building, _ world: World, animated: Bool) {
         let idx = world.index(b.x, b.y)
         views[idx]?.node.removeFromParentNode()
-        let v = BuildingView(b, lib: lib, world: world)
+        let shape: BeltShape = b.type == .conveyor ? beltShape(b, world) : .straight
+        let v = BuildingView(b, lib: lib, world: world, shape: shape)
         views[idx] = v
         buildingsRoot.addChildNode(v.node)
+        if animated { refreshShapes(around: b.pos, world) }
         if animated {
             v.node.scale = SCNVector3(0.3, 0.3, 0.3)
             let up = SCNAction.scale(to: 1.1, duration: 0.14)
@@ -472,12 +486,59 @@ final class SceneRenderer {
         } else {
             v.node.removeFromParentNode()
         }
+        refreshShapes(around: p, world)
     }
 
     func refreshBuilding(_ b: Building, _ world: World) {
         guard let v = views[world.index(b.x, b.y)] else { return }
         if b.type.hasDirection { v.setDir(b.dir) }
         if b.type == .assembler { v.setProduct(b.recipe?.output, lib: lib) }
+        refreshShapes(around: b.pos, world)
+    }
+
+    // MARK: Belt shapes
+
+    func beltShape(_ b: Building, _ world: World) -> BeltShape {
+        func feeds(_ side: Dir) -> Bool {
+            guard let n = world.building(b.x + side.dx, b.y + side.dy) else { return false }
+            let toward = side.opposite
+            switch n.type {
+            case .conveyor, .drill, .smelter, .assembler: return n.dir == toward
+            case .splitter: return n.dir == toward || n.dir.cw == toward || n.dir.ccw == toward
+            case .junction: return side == b.dir.opposite
+            case .market: return false
+            }
+        }
+        if feeds(b.dir.opposite) { return .straight }
+        let l = feeds(b.dir.ccw), r = feeds(b.dir.cw)
+        if l && !r { return .left }
+        if r && !l { return .right }
+        return .straight
+    }
+
+    func refreshShapes(around p: TilePos, _ world: World) {
+        for t in [p, p.moved(.up), p.moved(.down), p.moved(.left), p.moved(.right)] {
+            guard let b = world.building(t.x, t.y), b.type == .conveyor else { continue }
+            let idx = world.index(t.x, t.y)
+            guard let old = views[idx] else { continue }
+            let shape = beltShape(b, world)
+            if shape == old.shape && old.dir == b.dir { continue }
+            let v = BuildingView(b, lib: lib, world: world, shape: shape)
+            old.node.removeAllActions()
+            old.node.removeFromParentNode()
+            v.node.scale = old.node.scale
+            if v.node.scale.x < 1 { v.node.runAction(.scale(to: 1, duration: 0.15)) }
+            views[idx] = v
+            buildingsRoot.addChildNode(v.node)
+        }
+    }
+
+    func refreshAllShapes(_ world: World) {
+        for (idx, v) in views where v.type == .conveyor {
+            guard let b = world.buildings[idx] else { continue }
+            let shape = beltShape(b, world)
+            if shape != v.shape { refreshShapes(around: b.pos, world) }
+        }
     }
 
     func upgradeEffect(_ b: Building, _ world: World) {
@@ -584,7 +645,7 @@ final class SceneRenderer {
             Geo.cone(0.24, 0, 0.36, m, segments: 16).at(0, 0, 0),
             Geo.cylinder(0.09, 0.4, m, segments: 12).at(0, 0.38, 0)
         )
-        arrow.position = SCNVector3(0, 1.7, 0)
+        arrow.position = SCNVector3(0, 1.25, 0)
         let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.35, z: 0, duration: 0.45), .moveBy(x: 0, y: -0.35, z: 0, duration: 0.45)])
         bob.timingMode = .easeInEaseOut
         arrow.runAction(.repeatForever(bob))
@@ -691,7 +752,12 @@ final class SceneRenderer {
         let p = Float(min(1, max(0, c.p)))
         let pos: SIMD3<Float>
         let yaw: Float
-        if p < 0.5 {
+        if b.type == .conveyor {
+            let q = 1 - p
+            pos = entry * (q * q) + center * (2 * q * p) + out * (p * p)
+            let tan = (center - entry) * (2 * q) + (out - center) * (2 * p)
+            yaw = atan2(-tan.x, -tan.z)
+        } else if p < 0.5 {
             pos = simd_mix(entry, center, SIMD3<Float>(repeating: p * 2))
             yaw = c.from.opposite.yaw
         } else {

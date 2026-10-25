@@ -28,6 +28,30 @@ final class Sound {
         }
     }
 
+    private var music: AVAudioPlayer?
+
+    func setMusic(_ on: Bool) {
+        if on {
+            if AVAudioSession.sharedInstance().isOtherAudioPlaying { return }
+            if music == nil, let url = Bundle.main.url(forResource: "music", withExtension: "wav"),
+               let p = try? AVAudioPlayer(contentsOf: url) {
+                p.numberOfLoops = -1
+                p.volume = 0
+                p.prepareToPlay()
+                music = p
+            }
+            guard let m = music, !m.isPlaying else { return }
+            m.volume = 0
+            m.play()
+            m.setVolume(0.3, fadeDuration: 2.5)
+        } else {
+            music?.setVolume(0, fadeDuration: 0.4)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                if self?.music?.volume == 0 { self?.music?.pause() }
+            }
+        }
+    }
+
     func play(_ s: SFX, volume: Float = 1) {
         guard enabled, let list = players[s], !list.isEmpty else { return }
         let i = next[s, default: 0] % list.count

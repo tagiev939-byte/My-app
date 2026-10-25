@@ -13,6 +13,10 @@ struct ContentView: View {
                 HUDView().transition(.opacity)
             }
 
+            if game.scenario == "icons" {
+                IconSheetQA()
+            }
+
             if let r = game.offline {
                 Color.black.opacity(0.45).ignoresSafeArea().transition(.opacity)
                 OfflineCard(report: r)
@@ -402,5 +406,30 @@ struct ToolButton<Icon: View>: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { blink = true }
         }
+    }
+}
+
+/// QA view listing every rendered 3D icon (launch argument -scenario icons).
+struct IconSheetQA: View {
+    @EnvironmentObject var game: GameController
+
+    var body: some View {
+        let keys = BuildingType.allCases.map { $0.iconKey } + ItemType.allCases.map { $0.iconKey }
+        ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 10) {
+                ForEach(keys, id: \.self) { k in
+                    VStack(spacing: 2) {
+                        Icon3D(key: k, size: 64)
+                        Text(k.replacingOccurrences(of: "item.", with: "").replacingOccurrences(of: "building.", with: ""))
+                            .font(.game(9, .semibold)).foregroundColor(.white)
+                    }
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.5)))
+                }
+            }
+            .padding(.top, 60)
+            .padding(.horizontal, 12)
+        }
+        .background(Color(hex: 0x1A2533).ignoresSafeArea())
     }
 }

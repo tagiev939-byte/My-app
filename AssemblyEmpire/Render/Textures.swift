@@ -238,7 +238,7 @@ enum Tex {
 
     // MARK: Ground
 
-    static let grass = RGB(0x86BF5E)
+    static let grass = RGB(0x78AE55)
 
     static func ground(_ world: World, chunk c: Int, owned: Bool) -> UIImage {
         let px = 40, n = World.chunk

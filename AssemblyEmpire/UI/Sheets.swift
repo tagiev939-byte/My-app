@@ -262,7 +262,9 @@ struct MenuSheet: View {
                         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white.opacity(0.05)))
 
                         VStack(spacing: 4) {
-                            Toggle(isOn: $game.soundOn) { Label("Звук", systemImage: "speaker.wave.2.fill") }
+                            Toggle(isOn: $game.musicOn) { Label("Музыка", systemImage: "music.note") }
+                            Divider().overlay(Color.white.opacity(0.08))
+                            Toggle(isOn: $game.soundOn) { Label("Звуки", systemImage: "speaker.wave.2.fill") }
                             Divider().overlay(Color.white.opacity(0.08))
                             Toggle(isOn: $game.hapticsOn) { Label("Вибрация", systemImage: "iphone.radiowaves.left.and.right") }
                             Divider().overlay(Color.white.opacity(0.08))

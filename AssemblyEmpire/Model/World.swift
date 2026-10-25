@@ -722,7 +722,7 @@ extension World {
         w.tutorialStep = 100
         w.produced = [.ironOre: 900, .ironPlate: 500, .gear: 120, .copperPlate: 300, .copperOre: 400, .coal: 80]
         w.upgrades = [.belts: 1, .prices: 2]
-        w.contract = Contract(item: .gear, amount: 25, delivered: 11, reward: 1_450, timeLeft: 212, total: 300)
+        w.contract = Contract(item: .copperPlate, amount: 400, delivered: 180, reward: 4_600, timeLeft: 260, total: 300)
         w.history = [400, 620, 800, 950, 1200, 1500, 1700, 2100, 2400, 2600, 2900, 3300]
         for _ in 0..<1200 { w.step(1.0 / 30.0) }
         w.events.removeAll()

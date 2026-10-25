@@ -246,6 +246,43 @@ enum Geo {
         return flat(pts, center: SIMD3(0, -1, 0))
     }
 
+    /// Quarter-circle belt surface for corners. Output is -Z; input comes from -X (fromLeft) or +X.
+    static func arcBelt(fromLeft: Bool, inner: Float = 0.1, outer: Float = 0.9, segments: Int = 10) -> SCNGeometry {
+        let cx: Float = fromLeft ? -0.5 : 0.5
+        let cz: Float = -0.5
+        var verts: [SCNVector3] = []
+        var uvs: [CGPoint] = []
+        for i in 0...segments {
+            let t = Float(i) / Float(segments)
+            let th = t * Float.pi / 2
+            let dx = fromLeft ? sin(th) : -sin(th)
+            let dz = cos(th)
+            let v = CGFloat(1 - t)
+            verts.append(SCNVector3(cx + dx * inner, 0, cz + dz * inner))
+            uvs.append(CGPoint(x: fromLeft ? 0 : 1, y: v))
+            verts.append(SCNVector3(cx + dx * outer, 0, cz + dz * outer))
+            uvs.append(CGPoint(x: fromLeft ? 1 : 0, y: v))
+        }
+        // Make triangles face up
+        let p0 = SIMD3<Float>(verts[0].x, 0, verts[0].z)
+        let p1 = SIMD3<Float>(verts[1].x, 0, verts[1].z)
+        let p3 = SIMD3<Float>(verts[3].x, 0, verts[3].z)
+        let up = simd_cross(p1 - p0, p3 - p0).y > 0
+        var idx: [Int32] = []
+        for i in 0..<segments {
+            let a = Int32(2 * i), b = a + 1, c = a + 2, d = a + 3
+            if up {
+                idx += [a, b, d, a, d, c]
+            } else {
+                idx += [a, d, b, a, c, d]
+            }
+        }
+        let normals = [SCNVector3](repeating: SCNVector3(0, 1, 0), count: verts.count)
+        return SCNGeometry(sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: normals),
+                                     SCNGeometrySource(textureCoordinates: uvs)],
+                           elements: [SCNGeometryElement(indices: idx, primitiveType: .triangles)])
+    }
+
     /// Belt surface quad with UVs: v = 0 at the output (-Z) end.
     static func beltQuad(width w: Float, length l: Float) -> SCNGeometry {
         let hw = w / 2, hl = l / 2
@@ -260,6 +297,10 @@ enum Geo {
 }
 
 // MARK: - Model library
+
+enum BeltShape {
+    case straight, left, right
+}
 
 final class ModelLibrary {
     let beltMaterial: SCNMaterial
@@ -289,6 +330,35 @@ final class ModelLibrary {
     }
 
     // MARK: Buildings
+
+    private var cornerTemplates: [Bool: SCNNode] = [:]
+
+    func conveyor(_ shape: BeltShape) -> SCNNode {
+        switch shape {
+        case .straight: return building(.conveyor)
+        case .left, .right:
+            let fromLeft = shape == .left
+            if let t = cornerTemplates[fromLeft] { return t.clone() }
+            let t = makeCorner(fromLeft: fromLeft)
+            cornerTemplates[fromLeft] = t
+            return t.clone()
+        }
+    }
+
+    private func makeCorner(fromLeft: Bool) -> SCNNode {
+        let root = SCNNode()
+        let sx: Float = fromLeft ? 1 : -1
+        root.add(
+            Geo.box(0.97, 0.09, 0.97, M.frame).at(-0.015 * sx, 0.045, -0.015),
+            Geo.box(0.07, 0.07, 1.0, M.rail, chamfer: 0.015).at(0.43 * sx, 0.125, 0),
+            Geo.box(1.0, 0.07, 0.07, M.rail, chamfer: 0.015).at(0, 0.125, 0.43),
+            Geo.box(0.09, 0.07, 0.09, M.rail, chamfer: 0.015).at(-0.45 * sx, 0.125, -0.45)
+        )
+        let arc = Geo.arcBelt(fromLeft: fromLeft)
+        arc.materials = [beltMaterial]
+        root.addChildNode(SCNNode(geometry: arc).at(0, 0.092, 0))
+        return root
+    }
 
     func building(_ t: BuildingType) -> SCNNode {
         if let tpl = buildingTemplates[t] { return tpl.clone() }
@@ -502,9 +572,13 @@ final class ModelLibrary {
                 root.addChildNode(tooth)
             }
         case .wire:
-            root.addChildNode(Geo.cylinder(0.03, 0.12, M.woodDark, segments: 10).at(0, 0.06, 0))
-            root.addChildNode(Geo.torus(0.06, 0.03, c.pbr(t.hex, rough: 0.3, metal: 0.9)).at(0, 0.035, 0))
-            root.addChildNode(Geo.torus(0.06, 0.03, c.pbr(t.hex, rough: 0.3, metal: 0.9)).at(0, 0.085, 0))
+            let copper = c.pbr(t.hex, rough: 0.3, metal: 0.9)
+            root.add(
+                Geo.cylinder(0.09, 0.018, M.woodDark, segments: 18).at(0, 0.009, 0),
+                Geo.cylinder(0.072, 0.09, copper, segments: 18).at(0, 0.063, 0),
+                Geo.cylinder(0.09, 0.018, M.woodDark, segments: 18).at(0, 0.117, 0),
+                Geo.cylinder(0.025, 0.13, M.wood, segments: 10).at(0, 0.065, 0)
+            )
         case .circuit:
             root.add(
                 Geo.box(0.24, 0.025, 0.18, mat, chamfer: 0.005).at(0, 0.0125, 0),

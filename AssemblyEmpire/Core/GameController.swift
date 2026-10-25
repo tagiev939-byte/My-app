@@ -63,6 +63,12 @@ final class GameController: ObservableObject {
             Sound.shared.enabled = soundOn
         }
     }
+    @Published var musicOn: Bool {
+        didSet {
+            UserDefaults.standard.set(musicOn, forKey: "musicOn")
+            Sound.shared.setMusic(musicOn)
+        }
+    }
     @Published var hapticsOn: Bool {
         didSet {
             UserDefaults.standard.set(hapticsOn, forKey: "hapticsOn")
@@ -101,6 +107,7 @@ final class GameController: ObservableObject {
         scenario = d.string(forKey: "scenario")
         soundOn = d.object(forKey: "soundOn") as? Bool ?? true
         hapticsOn = d.object(forKey: "hapticsOn") as? Bool ?? true
+        musicOn = d.object(forKey: "musicOn") as? Bool ?? true
         highQuality = d.object(forKey: "highQuality") as? Bool ?? (ProcessInfo.processInfo.physicalMemory > 3_500_000_000)
 
         var w: World
@@ -130,6 +137,7 @@ final class GameController: ObservableObject {
 
         Sound.shared.enabled = soundOn
         Haptics.enabled = hapticsOn
+        if scenario == nil { Sound.shared.setMusic(musicOn) }
         renderer.highQuality = highQuality
         renderer.setup(w)
         renderer.rig.orbiting = showTitle
@@ -165,6 +173,7 @@ final class GameController: ObservableObject {
         v.isPlaying = true
         v.overlaySKScene = renderer.overlay
         renderer.view = v
+        renderer.prewarm()
     }
 
     // MARK: Loop
@@ -767,6 +776,8 @@ final class GameController: ObservableObject {
             selectedChunk = 6
         case "wide":
             rig.focus(SIMD3(25, 0, 25), distance: 40)
+        case "icons":
+            rig.focus(SIMD3(25, 0, 25), distance: 30)
         default:
             rig.focus(SIMD3(25, 0, 24.5), distance: 16)
         }

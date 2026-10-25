@@ -54,6 +54,8 @@ final class IconRenderer {
                                          center.z + cos(yaw) * cos(pitch) * dist)
         cameraNode.look(at: center)
         cameraNode.camera?.orthographicScale = Double(ext) * 0.68
+        _ = renderer.prepare(node, shouldAbortBlock: nil)
+        _ = renderer.snapshot(atTime: 0, with: CGSize(width: 8, height: 8), antialiasingMode: .none)
         let img = renderer.snapshot(atTime: 0, with: CGSize(width: size, height: size), antialiasingMode: .multisampling4X)
         holder.childNodes.forEach { $0.removeFromParentNode() }
         return img

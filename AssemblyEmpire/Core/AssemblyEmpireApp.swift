@@ -11,7 +11,11 @@ struct AssemblyEmpireApp: App {
                 .environmentObject(game)
         }
         .onChange(of: scenePhase) { phase in
-            if phase != .active { game.save() }
+            if phase != .active {
+                game.save()
+            } else if game.musicOn && game.scenario == nil {
+                Sound.shared.setMusic(true)
+            }
         }
     }
 }
