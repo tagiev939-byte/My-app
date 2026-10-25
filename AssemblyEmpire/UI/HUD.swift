@@ -242,7 +242,6 @@ struct ContractChip: View {
 
 struct BoostButton: View {
     @EnvironmentObject var game: GameController
-    @State private var pulse = false
 
     var body: some View {
         let active = game.hud.boostTime > 0
@@ -269,12 +268,8 @@ struct BoostButton: View {
                                : AnyShapeStyle(Color(hex: 0x0F1620).opacity(0.7)))
             )
             .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1))
-            .shadow(color: Color(hex: 0xF59E0B).opacity(ready ? (pulse ? 0.8 : 0.2) : (active ? 0.6 : 0)), radius: 10)
         }
         .buttonStyle(PressableStyle())
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
-        }
     }
 }
 
@@ -368,7 +363,6 @@ struct ToolButton<Icon: View>: View {
     let highlight: Bool
     @ViewBuilder let icon: () -> Icon
     let action: () -> Void
-    @State private var blink = false
 
     var body: some View {
         Button(action: action) {
@@ -397,15 +391,28 @@ struct ToolButton<Icon: View>: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(selected ? Theme.accent : (highlight ? Color.white.opacity(blink ? 1 : 0.15) : Color.clear),
-                            lineWidth: highlight ? 3 : 2)
+                    .stroke(selected ? Theme.accent : Color.clear, lineWidth: 2)
             )
+            .overlay {
+                if highlight && !selected { BlinkBorder(radius: 15) }
+            }
             .opacity(locked ? 0.6 : 1)
         }
         .buttonStyle(PressableStyle())
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { blink = true }
-        }
+    }
+}
+
+/// Pulsing outline used by the tutorial; only exists while it is needed.
+struct BlinkBorder: View {
+    let radius: CGFloat
+    @State private var on = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .stroke(Color.white.opacity(on ? 1 : 0.2), lineWidth: 3)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) { on = true }
+            }
     }
 }
 

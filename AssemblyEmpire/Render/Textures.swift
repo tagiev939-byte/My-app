@@ -89,26 +89,28 @@ enum Tex {
 
     // MARK: Surfaces
 
-    /// Conveyor rubber. Chevrons point to the top of the image (the belt's output side).
+    /// Conveyor rubber for one tile: ribs across the belt and a faint arrow towards the output (image top).
     static let belt: UIImage = render(64, 128, opaque: true) { c in
-        c.setFillColor(UIColor(hex: 0x25282E).cgColor)
+        c.setFillColor(UIColor(hex: 0x30343B).cgColor)
         c.fill(CGRect(x: 0, y: 0, width: 64, height: 128))
-        c.setFillColor(UIColor(hex: 0x2D3138).cgColor)
-        for i in 0..<8 { c.fill(CGRect(x: 0, y: CGFloat(i) * 16, width: 64, height: 6)) }
-        c.setStrokeColor(UIColor(hex: 0x6A7382).cgColor)
-        c.setLineWidth(7)
+        for i in 0..<6 {
+            let y = CGFloat(i) * 128 / 6
+            c.setFillColor(UIColor(hex: 0x23262B).cgColor)
+            c.fill(CGRect(x: 0, y: y + 8, width: 64, height: 7))
+            c.setFillColor(UIColor(hex: 0x41464F).cgColor)
+            c.fill(CGRect(x: 0, y: y + 6, width: 64, height: 2))
+        }
+        c.setStrokeColor(UIColor(hex: 0x555B66).cgColor)
+        c.setLineWidth(5)
         c.setLineCap(.round)
         c.setLineJoin(.round)
-        for k in 0..<2 {
-            let y0 = CGFloat(k) * 64 + 42
-            c.move(to: CGPoint(x: 13, y: y0))
-            c.addLine(to: CGPoint(x: 32, y: y0 - 18))
-            c.addLine(to: CGPoint(x: 51, y: y0))
-            c.strokePath()
-        }
-        c.setFillColor(UIColor(hex: 0x17191D).cgColor)
-        c.fill(CGRect(x: 0, y: 0, width: 4, height: 128))
-        c.fill(CGRect(x: 60, y: 0, width: 4, height: 128))
+        c.move(to: CGPoint(x: 20, y: 74))
+        c.addLine(to: CGPoint(x: 32, y: 60))
+        c.addLine(to: CGPoint(x: 44, y: 74))
+        c.strokePath()
+        c.setFillColor(UIColor(white: 0, alpha: 0.35).cgColor)
+        c.fill(CGRect(x: 0, y: 0, width: 3, height: 128))
+        c.fill(CGRect(x: 61, y: 0, width: 3, height: 128))
     }
 
     static let stripes: UIImage = render(128, 32, opaque: true) { c in
@@ -324,6 +326,30 @@ enum Tex {
                                       withAttributes: [.font: roundedFont(50, .black), .foregroundColor: UIColor.white, .paragraphStyle: p])
             UIGraphicsPopContext()
         }
+    }
+
+    private static var labelCache: [String: UIImage] = [:]
+
+    /// Gold text with a dark outline, used for floating income numbers.
+    static func label(_ text: String) -> UIImage {
+        if let img = labelCache[text] { return img }
+        let font = roundedFont(46, .black)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let w = Int(ceil(size.width)) + 16, h = Int(ceil(size.height)) + 12
+        let img = render(w, h) { c in
+            UIGraphicsPushContext(c)
+            let rect = CGRect(x: 8, y: 6, width: size.width, height: size.height)
+            (text as NSString).draw(in: rect.offsetBy(dx: 0, dy: 3), withAttributes: [
+                .font: font, .foregroundColor: UIColor(white: 0, alpha: 0.45)])
+            (text as NSString).draw(in: rect, withAttributes: [
+                .font: font, .foregroundColor: UIColor(hex: 0xFFD54A),
+                .strokeColor: UIColor(hex: 0x5A3A00), .strokeWidth: -7])
+            UIGraphicsPopContext()
+        }
+        if labelCache.count > 300 { labelCache.removeAll() }
+        labelCache[text] = img
+        return img
     }
 
     static let bubbleBlocked = bubble(symbol: "!", color: UIColor(hex: 0xF59E0B))

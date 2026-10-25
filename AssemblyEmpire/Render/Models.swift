@@ -250,43 +250,6 @@ enum Geo {
         return flat(pts, center: SIMD3(0, -1, 0))
     }
 
-    /// Quarter-circle belt surface for corners. Output is -Z; input comes from -X (fromLeft) or +X.
-    static func arcBelt(fromLeft: Bool, inner: Float = 0.1, outer: Float = 0.9, segments: Int = 10) -> SCNGeometry {
-        let cx: Float = fromLeft ? -0.5 : 0.5
-        let cz: Float = -0.5
-        var verts: [SCNVector3] = []
-        var uvs: [CGPoint] = []
-        for i in 0...segments {
-            let t = Float(i) / Float(segments)
-            let th = t * Float.pi / 2
-            let dx = fromLeft ? sin(th) : -sin(th)
-            let dz = cos(th)
-            let v = CGFloat(1 - t)
-            verts.append(SCNVector3(cx + dx * inner, 0, cz + dz * inner))
-            uvs.append(CGPoint(x: fromLeft ? 0 : 1, y: v))
-            verts.append(SCNVector3(cx + dx * outer, 0, cz + dz * outer))
-            uvs.append(CGPoint(x: fromLeft ? 1 : 0, y: v))
-        }
-        // Make triangles face up
-        let p0 = SIMD3<Float>(verts[0].x, 0, verts[0].z)
-        let p1 = SIMD3<Float>(verts[1].x, 0, verts[1].z)
-        let p3 = SIMD3<Float>(verts[3].x, 0, verts[3].z)
-        let up = simd_cross(p1 - p0, p3 - p0).y > 0
-        var idx: [Int32] = []
-        for i in 0..<segments {
-            let a = Int32(2 * i), b = a + 1, c = a + 2, d = a + 3
-            if up {
-                idx += [a, b, d, a, d, c]
-            } else {
-                idx += [a, d, b, a, c, d]
-            }
-        }
-        let normals = [SCNVector3](repeating: SCNVector3(0, 1, 0), count: verts.count)
-        return SCNGeometry(sources: [SCNGeometrySource(vertices: verts), SCNGeometrySource(normals: normals),
-                                     SCNGeometrySource(textureCoordinates: uvs)],
-                           elements: [SCNGeometryElement(indices: idx, primitiveType: .triangles)])
-    }
-
     /// Belt surface quad with UVs: v = 0 at the output (-Z) end.
     static func beltQuad(width w: Float, length l: Float) -> SCNGeometry {
         let hw = w / 2, hl = l / 2
@@ -308,7 +271,6 @@ enum BeltShape {
 
 final class ModelLibrary {
     let beltMaterial: SCNMaterial
-    private let beltGeometry: SCNGeometry
     private var buildingTemplates: [BuildingType: SCNNode] = [:]
     private var itemTemplates: [ItemType: SCNNode] = [:]
     private var rockGeos: [Resource: [SCNGeometry]] = [:]
@@ -322,12 +284,10 @@ final class ModelLibrary {
         m.diffuse.wrapS = .repeat
         m.diffuse.wrapT = .repeat
         m.diffuse.mipFilter = .linear
-        m.roughness.contents = NSNumber(value: 0.85)
+        m.roughness.contents = NSNumber(value: 0.8)
         m.metalness.contents = NSNumber(value: 0.0)
+        m.diffuse.maxAnisotropy = 8
         beltMaterial = m
-        let belt = Geo.beltQuad(width: 0.8, length: 1.0)
-        belt.materials = [m]
-        beltGeometry = belt
         let arrow = Geo.arrow()
         arrow.materials = [M.arrow]
         arrowGeometry = arrow
@@ -335,50 +295,54 @@ final class ModelLibrary {
 
     // MARK: Buildings
 
-    private var cornerTemplates: [Bool: SCNNode] = [:]
-
-    func conveyor(_ shape: BeltShape) -> SCNNode {
-        switch shape {
-        case .straight: return building(.conveyor)
-        case .left, .right:
-            let fromLeft = shape == .left
-            if let t = cornerTemplates[fromLeft] { return t.clone() }
-            let t = makeCorner(fromLeft: fromLeft)
-            cornerTemplates[fromLeft] = t
-            return t.clone()
-        }
-    }
-
-    private func makeCorner(fromLeft: Bool) -> SCNNode {
-        let root = SCNNode()
-        let sx: Float = fromLeft ? 1 : -1
-        root.add(
-            Geo.box(0.97, 0.09, 0.97, M.frame).at(-0.015 * sx, 0.045, -0.015),
-            Geo.box(0.07, 0.07, 1.0, M.rail, chamfer: 0.015).at(0.43 * sx, 0.125, 0),
-            Geo.box(1.0, 0.07, 0.07, M.rail, chamfer: 0.015).at(0, 0.125, 0.43),
-            Geo.box(0.09, 0.07, 0.09, M.rail, chamfer: 0.015).at(-0.45 * sx, 0.125, -0.45)
-        )
-        let arc = Geo.arcBelt(fromLeft: fromLeft)
-        arc.materials = [beltMaterial]
-        root.addChildNode(SCNNode(geometry: arc).at(0, 0.092, 0))
-        return root
-    }
-
     func building(_ t: BuildingType) -> SCNNode {
         if let tpl = buildingTemplates[t] { return tpl.clone() }
         let n: SCNNode
         switch t {
         case .conveyor: n = makeConveyor()
-        case .drill: n = makeDrill()
-        case .smelter: n = makeSmelter()
-        case .assembler: n = makeAssembler()
-        case .splitter: n = makeSplitter()
-        case .junction: n = makeJunction()
-        case .market: n = makeMarket()
+        case .drill: n = optimize(makeDrill())
+        case .smelter: n = optimize(makeSmelter())
+        case .assembler: n = optimize(makeAssembler())
+        case .splitter: n = optimize(makeSplitter())
+        case .junction: n = optimize(makeJunction())
+        case .market: n = optimize(makeMarket())
         }
         buildingTemplates[t] = n
         return n.clone()
     }
+
+    /// Merges every static part of a model into one geometry (far fewer draw calls).
+    /// Named parts (animated or per-instance) stay separate; their own parts get merged too.
+    private func optimize(_ root: SCNNode) -> SCNNode {
+        let keep: Set<String> = ["spin", "arm", "product", "glow", "coin", "smokeAt"]
+        let stat = SCNNode()
+        for child in root.childNodes {
+            if let name = child.name, keep.contains(name) {
+                let leaves = child.childNodes
+                if leaves.count > 1, leaves.allSatisfy({ $0.geometry != nil && $0.childNodes.isEmpty }) {
+                    let merged = SCNNode()
+                    for l in leaves {
+                        l.removeFromParentNode()
+                        merged.addChildNode(l)
+                    }
+                    child.addChildNode(merged.flattenedClone())
+                }
+                continue
+            }
+            if child.geometry != nil && child.childNodes.isEmpty {
+                child.removeFromParentNode()
+                stat.addChildNode(child)
+            }
+        }
+        if !stat.childNodes.isEmpty {
+            let flat = stat.flattenedClone()
+            flat.name = "static"
+            root.addChildNode(flat)
+        }
+        return root
+    }
+
+    var beltMaterials: [SCNMaterial] { [beltMaterial, M.frame, M.rail] }
 
     private func arrowNode(scale: Float = 1) -> SCNNode {
         let a = SCNNode(geometry: arrowGeometry)
@@ -387,14 +351,10 @@ final class ModelLibrary {
     }
 
     private func makeConveyor() -> SCNNode {
-        let root = SCNNode()
-        root.add(
-            Geo.box(0.94, 0.09, 1.0, M.frame).at(0, 0.045, 0),
-            Geo.box(0.07, 0.07, 1.0, M.rail, chamfer: 0.015).at(-0.43, 0.125, 0),
-            Geo.box(0.07, 0.07, 1.0, M.rail, chamfer: 0.015).at(0.43, 0.125, 0),
-            SCNNode(geometry: beltGeometry).at(0, 0.092, 0)
-        )
-        return root
+        var mb = MeshBuilder(elements: 3)
+        let info = BeltInfo(shape: .straight, backFeed: false, leftFeed: false, rightFeed: false, frontOpen: false)
+        BeltMesher.append(&mb, info: info, xf: TileXf(yaw: 0, offset: .zero))
+        return SCNNode(geometry: mb.geometry(materials: beltMaterials))
     }
 
     private func makeDrill() -> SCNNode {

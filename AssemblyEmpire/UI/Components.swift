@@ -21,13 +21,14 @@ struct Glass: ViewModifier {
     var radius: CGFloat = 20
     func body(content: Content) -> some View {
         content
+            // Solid translucent fill instead of a live blur: blurring a 3D view that changes
+            // every frame costs a lot of GPU time.
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color(hex: 0x0F1620).opacity(0.62))
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                    .fill(LinearGradient(colors: [Color(hex: 0x1A2430).opacity(0.9), Color(hex: 0x0E141C).opacity(0.9)],
+                                         startPoint: .top, endPoint: .bottom))
             )
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Theme.panelStroke, lineWidth: 1))
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 5)
     }
 }
 
@@ -75,7 +76,6 @@ struct CoinView: View {
                 .foregroundColor(Color(hex: 0x7A4E06))
         }
         .frame(width: size, height: size)
-        .shadow(color: Color(hex: 0xF59E0B).opacity(0.5), radius: 4)
     }
 }
 
@@ -174,7 +174,6 @@ struct PrimaryButton: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.white.opacity(highlight && glow ? 0.95 : 0), lineWidth: 3)
             )
-            .shadow(color: enabled ? Color(hex: 0xF59E0B).opacity(0.35) : .clear, radius: 8, y: 3)
         }
         .buttonStyle(PressableStyle())
         .onAppear {

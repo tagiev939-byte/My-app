@@ -17,6 +17,7 @@ final class CameraRig {
     var distance: Float = 15
     var goalDistance: Float = 15
     var orbiting = false
+    var velocity = SIMD3<Float>(repeating: 0)
 
     static let minDistance: Float = 5
     static let maxDistance: Float = 60
@@ -45,8 +46,22 @@ final class CameraRig {
         cameraNode.simdPosition = SIMD3(0, 0, distance)
     }
 
+    /// Keeps the map gliding after a quick swipe.
+    func fling(_ v: SIMD3<Float>) {
+        let speed = simd_length(v)
+        guard speed > 1.5 else { return }
+        velocity = speed > 60 ? v / speed * 60 : v
+    }
+
     func update(_ dt: Double) {
         if orbiting { goalYaw += Float(dt) * 0.07 }
+        if simd_length(velocity) > 0.05 {
+            goalTarget = clamp(goalTarget + velocity * Float(dt))
+            target = goalTarget
+            velocity *= Float(exp(-dt * 4.5))
+        } else {
+            velocity = .zero
+        }
         let k = Float(1 - exp(-dt * 7))
         target += (goalTarget - target) * k
         yaw += (goalYaw - yaw) * k

@@ -1,5 +1,4 @@
 import SceneKit
-import SpriteKit
 import UIKit
 import simd
 
@@ -15,14 +14,14 @@ final class BuildingView {
     private var product: SCNNode?
     private var productType: ItemType?
     private var working: Bool?
+    private var lastProgress: Double = 0
+    private let phase = Double.random(in: 0...6)
     private(set) var dir: Dir
-    let shape: BeltShape
 
-    init(_ b: Building, lib: ModelLibrary, world: World, shape: BeltShape = .straight) {
+    init(_ b: Building, lib: ModelLibrary, world: World) {
         type = b.type
         dir = b.dir
-        self.shape = shape
-        node = b.type == .conveyor ? lib.conveyor(shape) : lib.building(b.type)
+        node = lib.building(b.type)
         node.name = "b:\(b.x):\(b.y)"
         node.position = SCNVector3(Float(b.x) + 0.5, 0, Float(b.y) + 0.5)
         if b.type.hasDirection { node.eulerAngles.y = b.dir.yaw }
@@ -48,25 +47,32 @@ final class BuildingView {
         if b.type == .drill {
             let res = world.resource(b.x, b.y)
             if res != .none {
+                let pile = SCNNode()
                 for k in 0..<4 {
                     let a = Float(k) * Float.pi / 2 + 0.6
                     let r = SCNNode(geometry: lib.rock(res, variant: k))
                     r.position = SCNVector3(cos(a) * 0.2, 0.09, sin(a) * 0.2)
                     r.scale = SCNVector3(0.55, 0.55, 0.55)
                     r.eulerAngles.y = a
-                    node.addChildNode(r)
+                    pile.addChildNode(r)
                 }
+                node.addChildNode(pile.flattenedClone())
             }
         }
 
-        spin?.runAction(.repeatForever(.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 0.5)))
-        spin?.isPaused = true
+        if let spin {
+            spin.runAction(.repeatForever(.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 0.45)))
+            let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.06, z: 0, duration: 0.2), .moveBy(x: 0, y: -0.06, z: 0, duration: 0.2)])
+            bob.timingMode = .easeInEaseOut
+            spin.runAction(.repeatForever(bob))
+            spin.isPaused = true
+        }
         if let arm {
             let swing = SCNAction.sequence([
-                .rotateBy(x: 0, y: 1.7, z: 0, duration: 0.55),
-                .wait(duration: 0.15),
-                .rotateBy(x: 0, y: -1.7, z: 0, duration: 0.55),
-                .wait(duration: 0.15),
+                .rotateBy(x: 0, y: 1.7, z: 0, duration: 0.5),
+                .wait(duration: 0.12),
+                .rotateBy(x: 0, y: -1.7, z: 0, duration: 0.5),
+                .wait(duration: 0.12),
             ])
             swing.timingMode = .easeInEaseOut
             arm.runAction(.repeatForever(swing))
@@ -98,7 +104,9 @@ final class BuildingView {
     func setDir(_ d: Dir) {
         guard d != dir else { return }
         dir = d
-        node.runAction(.rotateTo(x: 0, y: CGFloat(d.yaw), z: 0, duration: 0.18, usesShortestUnitArc: true))
+        let turn = SCNAction.rotateTo(x: 0, y: CGFloat(d.yaw), z: 0, duration: 0.2, usesShortestUnitArc: true)
+        turn.timingMode = .easeOut
+        node.runAction(turn)
     }
 
     private var idleTime: Double = 0
@@ -122,102 +130,77 @@ final class BuildingView {
     }()
 
     /// Shows "!" when the output is blocked and "?" when inputs are missing, after a short delay.
-    func updateStatus(_ b: Building, dt: Double) {
+    private func updateStatus(_ b: Building, dt: Double) {
         guard type == .drill || type.isMachine else { return }
         idleTime = b.working ? 0 : idleTime + dt
         var kind = 0
         if idleTime > 3 {
             let blocked = type == .drill ? b.output.count >= 2 : b.output.count >= 4
-            kind = blocked ? 1 : 2
-            if type == .drill && !blocked { kind = 1 }
+            kind = (blocked || type == .drill) ? 1 : 2
         }
         guard kind != bubbleKind else { return }
         bubbleKind = kind
-        bubble?.removeFromParentNode()
-        bubble = nil
+        if let old = bubble {
+            bubble = nil
+            old.runAction(.sequence([.scale(to: 0.01, duration: 0.15), .removeFromParentNode()]))
+        }
         guard kind != 0, let g = BuildingView.bubbleGeometry[kind] else { return }
         let n = SCNNode(geometry: g)
         let holder = SCNNode()
         holder.position = SCNVector3(0, type == .drill ? 1.6 : 1.25, 0)
-        let bb = SCNBillboardConstraint()
-        holder.constraints = [bb]
+        holder.constraints = [SCNBillboardConstraint()]
         holder.addChildNode(n)
         n.renderingOrder = 50
         n.castsShadow = false
         let bob = SCNAction.sequence([.moveBy(x: 0, y: 0.08, z: 0, duration: 0.6), .moveBy(x: 0, y: -0.08, z: 0, duration: 0.6)])
         bob.timingMode = .easeInEaseOut
         n.runAction(.repeatForever(bob))
-        n.scale = SCNVector3(0.1, 0.1, 0.1)
-        n.runAction(.scale(to: 1, duration: 0.2))
+        holder.scale = SCNVector3(0.1, 0.1, 0.1)
+        let pop = SCNAction.scale(to: 1, duration: 0.25)
+        pop.timingMode = .easeOut
+        holder.runAction(pop)
         node.addChildNode(holder)
         bubble = holder
     }
 
-    func update(_ b: Building) {
+    func update(_ b: Building, time: Double, dt: Double) {
         let w = b.working
-        guard w != working else { return }
-        working = w
-        spin?.isPaused = !w
-        arm?.isPaused = !w
-        smoke?.birthRate = w ? 7 : 0
-        if let glow {
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.35
-            switch type {
-            case .smelter: glow.emission.intensity = w ? 2.4 : 0.25
-            case .drill: glow.emission.intensity = w ? 2.0 : 0.1
-            case .assembler: glow.emission.intensity = w ? 1.6 : 0.2
-            default: break
+        if w != working {
+            working = w
+            spin?.isPaused = !w
+            arm?.isPaused = !w
+            smoke?.birthRate = w ? 7 : 0
+            if let glow, type != .smelter {
+                SCNTransaction.begin()
+                SCNTransaction.animationDuration = 0.35
+                switch type {
+                case .drill: glow.emission.intensity = w ? 2.0 : 0.1
+                case .assembler: glow.emission.intensity = w ? 1.6 : 0.2
+                default: break
+                }
+                SCNTransaction.commit()
             }
-            SCNTransaction.commit()
         }
+        if type == .smelter, let glow {
+            // Living fire: smooth flicker while working, dim embers otherwise
+            let target = w ? 2.1 + 0.45 * sin(time * 8.7 + phase) + 0.2 * sin(time * 23.1 + phase * 2) : 0.25
+            let cur = Double(glow.emission.intensity)
+            glow.emission.intensity = CGFloat(cur + (target - cur) * min(1, dt * 10))
+        }
+        if (type == .drill || type.isMachine) && b.progress + 0.4 < lastProgress {
+            pulse(1.05)
+        }
+        lastProgress = b.progress
+        updateStatus(b, dt: dt)
     }
 
-    func pulse() {
+    func pulse(_ amount: CGFloat = 1.08) {
         guard node.action(forKey: "pulse") == nil else { return }
-        let up = SCNAction.scale(to: 1.08, duration: 0.08)
+        let up = SCNAction.scale(to: amount, duration: 0.07)
         up.timingMode = .easeOut
-        let down = SCNAction.scale(to: 1.0, duration: 0.14)
-        down.timingMode = .easeIn
+        let down = SCNAction.scale(to: 1.0, duration: 0.16)
+        down.timingMode = .easeInEaseOut
         node.runAction(.sequence([up, down]), forKey: "pulse")
-    }
-}
-
-// MARK: - Overlay (floating texts)
-
-final class OverlayScene: SKScene {
-    override init(size: CGSize) {
-        super.init(size: size)
-        scaleMode = .resizeFill
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-    }
-
-    required init?(coder aDecoder: NSCoder) { fatalError("not supported") }
-
-    func floatText(_ text: String, at p: CGPoint, color: UIColor = UIColor(hex: 0xFFD54A), size fontSize: CGFloat = 17) {
-        guard children.count < 50 else { return }
-        let pos = CGPoint(x: p.x, y: size.height - p.y)
-        let group = SKNode()
-        group.position = pos
-        let shadow = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        shadow.text = text
-        shadow.fontSize = fontSize
-        shadow.fontColor = UIColor(white: 0, alpha: 0.55)
-        shadow.position = CGPoint(x: 1, y: -1.5)
-        let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        label.text = text
-        label.fontSize = fontSize
-        label.fontColor = color
-        group.addChild(shadow)
-        group.addChild(label)
-        group.setScale(0.5)
-        addChild(group)
-        let pop = SKAction.sequence([.scale(to: 1.12, duration: 0.12), .scale(to: 1.0, duration: 0.1)])
-        let rise = SKAction.moveBy(x: 0, y: 48, duration: 1.15)
-        rise.timingMode = .easeOut
-        let fade = SKAction.sequence([.wait(forDuration: 0.65), .fadeOut(withDuration: 0.5)])
-        group.run(.sequence([.group([pop, rise, fade]), .removeFromParent()]))
     }
 }
 
@@ -229,7 +212,6 @@ final class SceneRenderer {
     let scene = SCNScene()
     let rig = CameraRig()
     let lib = ModelLibrary()
-    let overlay = OverlayScene(size: CGSize(width: 390, height: 844))
     weak var view: SCNView?
     var highQuality = true {
         didSet { applyQuality() }
@@ -241,6 +223,11 @@ final class SceneRenderer {
     private let itemsRoot = SCNNode()
     private let signsRoot = SCNNode()
     private let fxRoot = SCNNode()
+    private let beltRoot = SCNNode()
+    private var beltNodes: [SCNNode?] = Array(repeating: nil, count: World.chunks * World.chunks)
+    private var beltDirty = Set<Int>()
+    private var dying: [DyingItem] = []
+    private(set) var time: Double = 0
     private let sun = SCNNode()
     private let selection = SCNNode()
     private let hint = SCNNode()
@@ -263,6 +250,17 @@ final class SceneRenderer {
         let node: SCNNode
         let type: ItemType
         var frame: Int
+        let born: Double
+        var pos: SIMD3<Float>
+        var dir: SIMD3<Float>
+    }
+
+    struct DyingItem {
+        let node: SCNNode
+        let type: ItemType
+        let start: Double
+        let from: SIMD3<Float>
+        let dir: SIMD3<Float>
     }
 
     // MARK: Setup
@@ -275,7 +273,7 @@ final class SceneRenderer {
         isSetUp = true
         let root = scene.rootNode
         root.addChildNode(rig.root)
-        [terrainRoot, decoRoot, buildingsRoot, itemsRoot, signsRoot, fxRoot, selection, hint].forEach { root.addChildNode($0) }
+        [terrainRoot, decoRoot, beltRoot, buildingsRoot, itemsRoot, signsRoot, fxRoot, selection, hint].forEach { root.addChildNode($0) }
 
         // Sky, image based lighting and fog
         scene.background.contents = Tex.sky
@@ -292,13 +290,14 @@ final class SceneRenderer {
         light.intensity = 1450
         light.color = UIColor(red: 1.0, green: 0.95, blue: 0.86, alpha: 1)
         light.castsShadow = true
-        light.shadowMode = .deferred
-        light.shadowColor = UIColor(white: 0, alpha: 0.55)
+        light.shadowMode = .forward
+        light.shadowColor = UIColor(white: 0, alpha: 0.5)
         light.shadowMapSize = CGSize(width: 2048, height: 2048)
         light.automaticallyAdjustsShadowProjection = true
-        light.maximumShadowDistance = 70
-        light.shadowCascadeCount = 2
-        light.shadowRadius = 2.5
+        light.maximumShadowDistance = 42
+        light.shadowCascadeCount = 1
+        light.shadowRadius = 1.5
+        light.shadowBias = 2
         sun.light = light
         sun.eulerAngles = SCNVector3(-0.92, 0.7, 0)
         root.addChildNode(sun)
@@ -369,19 +368,17 @@ final class SceneRenderer {
         cam.wantsHDR = true
         cam.wantsExposureAdaptation = false
         cam.exposureOffset = 0
-        cam.bloomIntensity = highQuality ? 0.45 : 0.25
-        cam.bloomThreshold = 0.85
-        cam.bloomBlurRadius = 6
-        cam.screenSpaceAmbientOcclusionIntensity = highQuality ? 0.7 : 0
-        cam.screenSpaceAmbientOcclusionRadius = 0.35
-        cam.screenSpaceAmbientOcclusionNormalThreshold = 0.3
-        cam.screenSpaceAmbientOcclusionDepthThreshold = 0.25
+        cam.bloomIntensity = highQuality ? 0.35 : 0
+        cam.bloomThreshold = 0.9
+        cam.bloomBlurRadius = 4
+        cam.bloomIterationCount = 1
+        cam.screenSpaceAmbientOcclusionIntensity = 0
         cam.saturation = 1.0
         cam.contrast = 0.08
-        cam.vignettingIntensity = 0.35
+        cam.vignettingIntensity = 0.3
         cam.vignettingPower = 0.6
-        sun.light?.shadowSampleCount = highQuality ? 8 : 2
-        sun.light?.shadowMapSize = highQuality ? CGSize(width: 2048, height: 2048) : CGSize(width: 1024, height: 1024)
+        sun.light?.shadowSampleCount = highQuality ? 4 : 1
+        sun.light?.shadowRadius = highQuality ? 2 : 1
         view?.antialiasingMode = highQuality ? .multisampling4X : .multisampling2X
     }
 
@@ -404,10 +401,10 @@ final class SceneRenderer {
         }
         for c in 0..<(World.chunks * World.chunks) { rebuildDeco(c, world) }
         for b in world.buildings {
-            guard let b else { continue }
+            guard let b, b.type != .conveyor else { continue }
             addBuilding(b, world, animated: false)
         }
-        refreshAllShapes(world)
+        for c in 0..<(World.chunks * World.chunks) { rebuildBelts(c, world) }
         updateSigns(world)
     }
 
@@ -416,7 +413,6 @@ final class SceneRenderer {
         guard let v = view else { return }
         var nodes: [SCNNode] = BuildingType.allCases.map { lib.building($0) }
         nodes += ItemType.allCases.map { lib.item($0) }
-        nodes += [lib.conveyor(.left), lib.conveyor(.right)]
         v.prepare(nodes, completionHandler: nil)
     }
 
@@ -429,6 +425,11 @@ final class SceneRenderer {
         views.removeAll()
         items.values.forEach { $0.node.removeFromParentNode() }
         items.removeAll()
+        dying.forEach { $0.node.removeFromParentNode() }
+        dying.removeAll()
+        beltNodes.forEach { $0?.removeFromParentNode() }
+        beltNodes = Array(repeating: nil, count: World.chunks * World.chunks)
+        beltDirty.removeAll()
         pools.values.forEach { $0.forEach { $0.removeFromParentNode() } }
         pools.removeAll()
         signs.values.forEach { $0.removeFromParentNode() }
@@ -522,26 +523,36 @@ final class SceneRenderer {
 
     func addBuilding(_ b: Building, _ world: World, animated: Bool) {
         let idx = world.index(b.x, b.y)
+        markBelts(around: b.pos, world)
+        if b.type == .conveyor {
+            if animated { flash(at: b.pos) }
+            return
+        }
         views[idx]?.node.removeFromParentNode()
-        let shape: BeltShape = b.type == .conveyor ? beltShape(b, world) : .straight
-        let v = BuildingView(b, lib: lib, world: world, shape: shape)
+        let v = BuildingView(b, lib: lib, world: world)
         views[idx] = v
         buildingsRoot.addChildNode(v.node)
-        if animated { refreshShapes(around: b.pos, world) }
         if animated {
             v.node.scale = SCNVector3(0.3, 0.3, 0.3)
-            let up = SCNAction.scale(to: 1.1, duration: 0.14)
+            v.node.position.y = 0.6
+            let up = SCNAction.scale(to: 1.08, duration: 0.16)
             up.timingMode = .easeOut
             let down = SCNAction.scale(to: 1.0, duration: 0.12)
             down.timingMode = .easeInEaseOut
-            v.node.runAction(.sequence([up, down]))
-            if b.type != .conveyor { burst(Effects.dust(), at: SIMD3(Float(b.x) + 0.5, 0.05, Float(b.y) + 0.5)) }
+            let drop = SCNAction.move(to: SCNVector3(Float(b.x) + 0.5, 0, Float(b.y) + 0.5), duration: 0.18)
+            drop.timingMode = .easeIn
+            v.node.runAction(.group([.sequence([up, down]), drop]))
+            burst(Effects.dust(), at: SIMD3(Float(b.x) + 0.5, 0.05, Float(b.y) + 0.5))
         }
     }
 
     func removeBuilding(at p: TilePos, _ world: World, animated: Bool) {
+        markBelts(around: p, world)
         let idx = world.index(p.x, p.y)
-        guard let v = views.removeValue(forKey: idx) else { return }
+        guard let v = views.removeValue(forKey: idx) else {
+            if animated { burst(Effects.dust(), at: SIMD3(Float(p.x) + 0.5, 0.05, Float(p.y) + 0.5)) }
+            return
+        }
         if animated {
             v.node.enumerateHierarchy { n, _ in n.categoryBitMask = 0 }
             let shrink = SCNAction.scale(to: 0.05, duration: 0.18)
@@ -551,59 +562,62 @@ final class SceneRenderer {
         } else {
             v.node.removeFromParentNode()
         }
-        refreshShapes(around: p, world)
     }
 
     func refreshBuilding(_ b: Building, _ world: World) {
+        markBelts(around: b.pos, world)
         guard let v = views[world.index(b.x, b.y)] else { return }
         if b.type.hasDirection { v.setDir(b.dir) }
         if b.type == .assembler { v.setProduct(b.recipe?.output, lib: lib) }
-        refreshShapes(around: b.pos, world)
     }
 
-    // MARK: Belt shapes
+    // MARK: Conveyor meshes
 
-    func beltShape(_ b: Building, _ world: World) -> BeltShape {
-        func feeds(_ side: Dir) -> Bool {
-            guard let n = world.building(b.x + side.dx, b.y + side.dy) else { return false }
-            let toward = side.opposite
-            switch n.type {
-            case .conveyor, .drill, .smelter, .assembler: return n.dir == toward
-            case .splitter: return n.dir == toward || n.dir.cw == toward || n.dir.ccw == toward
-            case .junction: return side == b.dir.opposite
-            case .market: return false
+    /// Conveyors are merged per chunk; neighbours change caps, gaps and corners, so mark them too.
+    func markBelts(around p: TilePos, _ world: World) {
+        for t in [p, p.moved(.up), p.moved(.down), p.moved(.left), p.moved(.right)] where world.inBounds(t.x, t.y) {
+            beltDirty.insert(world.chunkOf(t.x, t.y))
+        }
+    }
+
+    private func rebuildBelts(_ c: Int, _ world: World) {
+        beltNodes[c]?.removeFromParentNode()
+        beltNodes[c] = nil
+        var mb = MeshBuilder(elements: 3)
+        let cx = c % World.chunks, cy = c / World.chunks
+        for y in (cy * World.chunk)..<((cy + 1) * World.chunk) {
+            for x in (cx * World.chunk)..<((cx + 1) * World.chunk) {
+                guard let b = world.buildings[world.index(x, y)], b.type == .conveyor else { continue }
+                let xf = TileXf(yaw: b.dir.yaw, offset: SIMD3(Float(x) + 0.5, 0, Float(y) + 0.5))
+                BeltMesher.append(&mb, info: BeltMesher.info(b, world), xf: xf)
             }
         }
-        if feeds(b.dir.opposite) { return .straight }
-        let l = feeds(b.dir.ccw), r = feeds(b.dir.cw)
-        if l && !r { return .left }
-        if r && !l { return .right }
-        return .straight
+        guard let g = mb.geometry(materials: lib.beltMaterials) else { return }
+        let n = SCNNode(geometry: g)
+        n.castsShadow = false
+        beltRoot.addChildNode(n)
+        beltNodes[c] = n
     }
 
-    func refreshShapes(around p: TilePos, _ world: World) {
-        for t in [p, p.moved(.up), p.moved(.down), p.moved(.left), p.moved(.right)] {
-            guard let b = world.building(t.x, t.y), b.type == .conveyor else { continue }
-            let idx = world.index(t.x, t.y)
-            guard let old = views[idx] else { continue }
-            let shape = beltShape(b, world)
-            if shape == old.shape && old.dir == b.dir { continue }
-            let v = BuildingView(b, lib: lib, world: world, shape: shape)
-            old.node.removeAllActions()
-            old.node.removeFromParentNode()
-            v.node.scale = old.node.scale
-            if v.node.scale.x < 1 { v.node.runAction(.scale(to: 1, duration: 0.15)) }
-            views[idx] = v
-            buildingsRoot.addChildNode(v.node)
-        }
-    }
-
-    func refreshAllShapes(_ world: World) {
-        for (idx, v) in views where v.type == .conveyor {
-            guard let b = world.buildings[idx] else { continue }
-            let shape = beltShape(b, world)
-            if shape != v.shape { refreshShapes(around: b.pos, world) }
-        }
+    /// Quick highlight where a conveyor tile was just placed.
+    private func flash(at p: TilePos) {
+        let plane = SCNPlane(width: 1, height: 1)
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.diffuse.contents = UIColor(hex: 0xFFE27A)
+        m.writesToDepthBuffer = false
+        m.blendMode = .add
+        plane.materials = [m]
+        let n = SCNNode(geometry: plane)
+        n.eulerAngles.x = -Float.pi / 2
+        n.position = SCNVector3(Float(p.x) + 0.5, 0.18, Float(p.y) + 0.5)
+        n.opacity = 0.55
+        n.castsShadow = false
+        n.scale = SCNVector3(0.7, 0.7, 0.7)
+        fxRoot.addChildNode(n)
+        let grow = SCNAction.scale(to: 1.0, duration: 0.2)
+        grow.timingMode = .easeOut
+        n.runAction(.sequence([.group([grow, .fadeOut(duration: 0.3)]), .removeFromParentNode()]))
     }
 
     func upgradeEffect(_ b: Building, _ world: World) {
@@ -751,7 +765,13 @@ final class SceneRenderer {
     // MARK: Per-frame update
 
     func update(_ world: World, dt: Double) {
+        time += dt
         rig.update(dt)
+
+        if !beltDirty.isEmpty {
+            for c in beltDirty { rebuildBelts(c, world) }
+            beltDirty.removeAll()
+        }
 
         beltPhase = (beltPhase + world.beltSpeed * dt).truncatingRemainder(dividingBy: 1)
         lib.beltMaterial.diffuse.contentsTransform = SCNMatrix4MakeTranslation(0, Float(beltPhase), 0)
@@ -762,10 +782,7 @@ final class SceneRenderer {
                                                                 SCNMatrix4MakeTranslation(waterPhase, waterPhase * 0.6, 0))
 
         for (idx, v) in views {
-            if let b = world.buildings[idx] {
-                v.update(b)
-                v.updateStatus(b, dt: dt)
-            }
+            if let b = world.buildings[idx] { v.update(b, time: time, dt: dt) }
         }
         syncItems(world)
     }
@@ -776,7 +793,7 @@ final class SceneRenderer {
         for case let b? in world.buildings {
             switch b.type {
             case .conveyor:
-                for c in b.lane { placeItem(c, b, y: 0.094, exit: b.dir, f) }
+                for c in b.lane { placeItem(c, b, y: BeltMesher.surfaceY, exit: b.dir, f) }
             case .splitter:
                 for c in b.lane { placeItem(c, b, y: 0.18, exit: c.to ?? b.dir, f) }
             case .junction:
@@ -790,18 +807,61 @@ final class SceneRenderer {
         for (id, e) in items where e.frame != f { stale.append(id) }
         for id in stale {
             if let e = items.removeValue(forKey: id) {
-                e.node.isHidden = true
-                pools[e.type, default: []].append(e.node)
+                // The item went into a building: let it glide in and shrink instead of popping out.
+                dying.append(DyingItem(node: e.node, type: e.type, start: time, from: e.pos, dir: e.dir))
             }
+        }
+        if !dying.isEmpty {
+            var keep: [DyingItem] = []
+            keep.reserveCapacity(dying.count)
+            for d in dying {
+                let t = Float((time - d.start) / 0.16)
+                if t >= 1 {
+                    d.node.isHidden = true
+                    d.node.scale = SCNVector3(1, 1, 1)
+                    pools[d.type, default: []].append(d.node)
+                } else {
+                    d.node.simdPosition = d.from + d.dir * (0.32 * t)
+                    let s = 1 - 0.85 * t
+                    d.node.scale = SCNVector3(s, s, s)
+                    keep.append(d)
+                }
+            }
+            dying = keep
         }
     }
 
     private func placeItem(_ c: Cargo, _ b: Building, y: Float, exit: Dir, _ f: Int) {
+        let cx = Float(b.x) + 0.5, cz = Float(b.y) + 0.5
+        let entry = SIMD3<Float>(cx + Float(c.from.dx) * 0.5, y, cz + Float(c.from.dy) * 0.5)
+        let center = SIMD3<Float>(cx, y, cz)
+        let out = SIMD3<Float>(cx + Float(exit.dx) * 0.5, y, cz + Float(exit.dy) * 0.5)
+        let p = Float(min(1, max(0, c.p)))
+        let pos: SIMD3<Float>
+        var tan: SIMD3<Float>
+        if b.type == .conveyor {
+            let q = 1 - p
+            pos = entry * (q * q) + center * (2 * q * p) + out * (p * p)
+            tan = (center - entry) * (2 * q) + (out - center) * (2 * p)
+        } else if p < 0.5 {
+            pos = simd_mix(entry, center, SIMD3<Float>(repeating: p * 2))
+            tan = center - entry
+        } else {
+            pos = simd_mix(center, out, SIMD3<Float>(repeating: (p - 0.5) * 2))
+            tan = out - center
+        }
+        let len = simd_length(tan)
+        tan = len > 1e-4 ? tan / len : SIMD3(Float(exit.dx), 0, Float(exit.dy))
+
         let node: SCNNode
+        let born: Double
         if var e = items[c.id] {
             e.frame = f
+            e.pos = pos
+            e.dir = tan
             items[c.id] = e
             node = e.node
+            born = e.born
         } else {
             if var list = pools[c.type], let n = list.popLast() {
                 pools[c.type] = list
@@ -809,31 +869,21 @@ final class SceneRenderer {
                 node.isHidden = false
             } else {
                 node = lib.item(c.type)
+                node.castsShadow = false
                 itemsRoot.addChildNode(node)
             }
-            items[c.id] = ItemEntry(node: node, type: c.type, frame: f)
-        }
-        let cx = Float(b.x) + 0.5, cz = Float(b.y) + 0.5
-        let entry = SIMD3<Float>(cx + Float(c.from.dx) * 0.5, y, cz + Float(c.from.dy) * 0.5)
-        let center = SIMD3<Float>(cx, y, cz)
-        let out = SIMD3<Float>(cx + Float(exit.dx) * 0.5, y, cz + Float(exit.dy) * 0.5)
-        let p = Float(min(1, max(0, c.p)))
-        let pos: SIMD3<Float>
-        let yaw: Float
-        if b.type == .conveyor {
-            let q = 1 - p
-            pos = entry * (q * q) + center * (2 * q * p) + out * (p * p)
-            let tan = (center - entry) * (2 * q) + (out - center) * (2 * p)
-            yaw = atan2(-tan.x, -tan.z)
-        } else if p < 0.5 {
-            pos = simd_mix(entry, center, SIMD3<Float>(repeating: p * 2))
-            yaw = c.from.opposite.yaw
-        } else {
-            pos = simd_mix(center, out, SIMD3<Float>(repeating: (p - 0.5) * 2))
-            yaw = exit.yaw
+            born = time
+            items[c.id] = ItemEntry(node: node, type: c.type, frame: f, born: time, pos: pos, dir: tan)
         }
         node.simdPosition = pos
-        node.simdEulerAngles = SIMD3(0, yaw, 0)
+        node.simdEulerAngles = SIMD3(0, atan2(-tan.x, -tan.z), 0)
+        let age = time - born
+        if age < 0.18 {
+            let s = Float(0.3 + 0.7 * (age / 0.18))
+            node.scale = SCNVector3(s, s, s)
+        } else if node.scale.x != 1 {
+            node.scale = SCNVector3(1, 1, 1)
+        }
     }
 
     // MARK: Picking & popups
@@ -869,9 +919,11 @@ final class SceneRenderer {
         return groundTile(p)
     }
 
-    func panCamera(from a: CGPoint, to b: CGPoint) {
-        guard let g0 = ground(a), let g1 = ground(b) else { return }
+    @discardableResult
+    func panCamera(from a: CGPoint, to b: CGPoint) -> SIMD3<Float> {
+        guard let g0 = ground(a), let g1 = ground(b) else { return .zero }
         rig.pan(by: g0 - g1)
+        return g0 - g1
     }
 
     func zoomCamera(scale: CGFloat, around p: CGPoint) {
@@ -882,13 +934,39 @@ final class SceneRenderer {
 
     func cashPopup(x: Int, y: Int, amount: Double, world: World) {
         views[world.index(x, y)]?.pulse()
-        guard let v = view else { return }
-        let p = v.projectPoint(SCNVector3(Float(x) + 0.5, 1.25, Float(y) + 0.5))
-        guard p.z > 0, p.z < 1 else { return }
-        let pt = CGPoint(x: CGFloat(p.x), y: CGFloat(p.y))
-        guard v.bounds.insetBy(dx: -40, dy: -40).contains(pt) else { return }
-        overlay.floatText(Fmt.gain(amount), at: pt)
-        if rig.distance < 22 { burst(Effects.coins(), at: SIMD3(Float(x) + 0.5, 1.1, Float(y) + 0.5)) }
+        let p = SIMD3<Float>(Float(x) + 0.5, 1.2, Float(y) + 0.5)
+        floatText(Fmt.gain(amount), at: p)
+        if rig.distance < 22 { burst(Effects.coins(), at: SIMD3(p.x, 1.1, p.z)) }
+    }
+
+    /// Floating income number rendered in the 3D scene (always on top, faces the camera).
+    func floatText(_ text: String, at p: SIMD3<Float>) {
+        guard fxRoot.childNodes.count < 60 else { return }
+        let img = Tex.label(text)
+        let k = CGFloat(max(1, rig.distance / 14))
+        let h: CGFloat = 0.34 * k
+        let plane = SCNPlane(width: h * img.size.width / max(1, img.size.height), height: h)
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.diffuse.contents = img
+        m.readsFromDepthBuffer = false
+        m.writesToDepthBuffer = false
+        m.isDoubleSided = true
+        plane.materials = [m]
+        let n = SCNNode(geometry: plane)
+        n.renderingOrder = 100
+        n.castsShadow = false
+        let holder = SCNNode()
+        holder.simdPosition = p
+        holder.constraints = [SCNBillboardConstraint()]
+        holder.addChildNode(n)
+        fxRoot.addChildNode(holder)
+        n.scale = SCNVector3(0.4, 0.4, 0.4)
+        let pop = SCNAction.sequence([.scale(to: 1.15, duration: 0.12), .scale(to: 1.0, duration: 0.1)])
+        let rise = SCNAction.moveBy(x: 0, y: 0.9 * k, z: 0, duration: 1.2)
+        rise.timingMode = .easeOut
+        n.runAction(.sequence([pop, .wait(duration: 0.55), .fadeOut(duration: 0.5)]))
+        holder.runAction(.sequence([rise, .removeFromParentNode()]))
     }
 
     func screenPoint(of p: TilePos, height: Float = 0) -> CGPoint? {

@@ -90,7 +90,7 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           mkdir -p shots
-          for s in title factory inspector build closeup land upgrades goals menu tutorial wide icons autoplay; do
+          for s in title factory belts stats inspector closeup land upgrades tutorial wide icons autoplay; do
             xcrun simctl launch --terminate-running-process \
               --stdout="$PWD/shots/$s.log" --stderr="$PWD/shots/$s.err" \
               "$UDID" com.tagiev.assemblyempire -scenario "$s" || echo "launch failed: $s"

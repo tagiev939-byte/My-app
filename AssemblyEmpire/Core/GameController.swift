@@ -156,6 +156,7 @@ final class GameController: ObservableObject {
         publishHUD()
         let proxy = LinkProxy(self)
         let l = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick(_:)))
+        l.preferredFramesPerSecond = 60
         l.add(to: .main, forMode: .common)
         link = l
 
@@ -171,7 +172,8 @@ final class GameController: ObservableObject {
         v.preferredFramesPerSecond = 60
         v.rendersContinuously = true
         v.isPlaying = true
-        v.overlaySKScene = renderer.overlay
+        // Render at 2x instead of the native 3x: about half the pixels with the same sharpness after MSAA.
+        v.contentScaleFactor = min(UIScreen.main.scale, 2)
         renderer.view = v
         renderer.prewarm()
     }
@@ -187,9 +189,6 @@ final class GameController: ObservableObject {
         world.step(dt)
         handleEvents()
         renderer.update(world, dt: dt)
-        if let v = view, renderer.overlay.size != v.bounds.size, v.bounds.width > 0 {
-            renderer.overlay.size = v.bounds.size
-        }
         processIconQueue()
 
         hudAccum += dt
@@ -387,8 +386,12 @@ final class GameController: ObservableObject {
         publishHUD()
     }
 
+    private var panSamples: [(t: CFTimeInterval, d: SIMD3<Float>)] = []
+
     func dragBegan(start: CGPoint, current: CGPoint) {
         guard !showTitle else { return }
+        renderer.rig.velocity = .zero
+        panSamples.removeAll()
         switch tool {
         case .build(.conveyor):
             dragMode = .belt
@@ -412,8 +415,11 @@ final class GameController: ObservableObject {
     func dragChanged(_ p: CGPoint) {
         switch dragMode {
         case .camera:
-            renderer.panCamera(from: lastDragPoint, to: p)
+            let d = renderer.panCamera(from: lastDragPoint, to: p)
             lastDragPoint = p
+            let now = CACurrentMediaTime()
+            panSamples.append((now, d))
+            panSamples.removeAll { now - $0.t > 0.1 }
         case .belt:
             if let t = renderer.groundTile(p) { extendStroke(t) }
         case .demolish:
@@ -428,6 +434,15 @@ final class GameController: ObservableObject {
 
     func dragEnded() {
         if dragMode == .belt { publishHUD() }
+        if dragMode == .camera, let first = panSamples.first, let last = panSamples.last {
+            let now = CACurrentMediaTime()
+            if now - last.t < 0.06 {
+                let span = max(0.016, last.t - first.t + 1.0 / 60.0)
+                let sum = panSamples.reduce(SIMD3<Float>.zero) { $0 + $1.d }
+                renderer.rig.fling(sum / Float(span))
+            }
+        }
+        panSamples.removeAll()
         dragMode = .none
         stroke = []
         lastDemolish = nil
@@ -778,6 +793,13 @@ final class GameController: ObservableObject {
             rig.focus(SIMD3(25, 0, 25), distance: 60)
         case "icons":
             rig.focus(SIMD3(25, 0, 25), distance: 30)
+        case "stats":
+            rig.focus(SIMD3(25, 0, 24.5), distance: 16)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.view?.showsStatistics = true }
+        case "belts":
+            buildBeltShowcase()
+            rig.focus(SIMD3(36, 0, 25), distance: 10)
+            rig.goalYaw = 0.35
         case "autoplay":
             world.money = 5_000
             rig.focus(SIMD3(24.5, 0, 24), distance: 14)
@@ -793,6 +815,40 @@ final class GameController: ObservableObject {
                 qaLog("scenario=\(s) money=\(self.world.money) buildings=\(self.world.buildingCount) icons=\(self.icons.count)")
             }
         }
+    }
+
+    /// A set of conveyor layouts (corners, merges, ends) for visual QA.
+    private func buildBeltShowcase() {
+        let w = world
+        // Line with a corner and side merge
+        w.line(31, 22, .right, 4)
+        w.place(.conveyor, 35, 22, .down)
+        w.line(35, 23, .down, 3)
+        w.place(.conveyor, 34, 24, .right)
+        w.place(.conveyor, 33, 24, .right)
+        w.place(.market, 35, 26, .up)
+        // S-curve
+        w.place(.conveyor, 37, 21, .down)
+        w.place(.conveyor, 37, 22, .right)
+        w.place(.conveyor, 38, 22, .down)
+        w.place(.conveyor, 38, 23, .down)
+        w.place(.conveyor, 38, 24, .left)
+        w.place(.conveyor, 37, 24, .down)
+        w.place(.conveyor, 37, 25, .down)
+        // Parallel lines into a smelter
+        w.line(31, 27, .right, 3)
+        w.line(31, 28, .right, 3)
+        w.place(.smelter, 34, 27, .right)
+        w.place(.conveyor, 34, 28, .up)
+        w.place(.drill, 30, 27, .right)
+        w.place(.drill, 30, 28, .right)
+        for b in w.buildings.compactMap({ $0 }) where b.x >= 30 && b.x < 40 && b.y >= 20 && b.y < 30 {
+            if b.type == .conveyor {
+                b.lane = [Cargo(id: 900_000 + b.x * 100 + b.y, type: .ironOre, p: 0.3, from: b.dir.opposite, to: nil)]
+            }
+            renderer.addBuilding(b, w, animated: false)
+        }
+        renderer.rebuildDeco(13, w)
     }
 
     /// Drives the real input path (screen taps and drags) through the tutorial and a belt stroke.
