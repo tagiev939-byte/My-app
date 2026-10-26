@@ -622,6 +622,7 @@ final class SceneRenderer {
         carsRoot.childNodes.forEach { $0.removeFromParentNode() }
         stations = [nil, nil, nil, nil]
         stationKeys = ["", "", "", ""]
+        PersonView.purge()
         cashiers = []
         windowNodes = []
         windowsShown = -1
