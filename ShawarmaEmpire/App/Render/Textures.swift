@@ -3,11 +3,20 @@ import SceneKit
 
 /// Procedural textures — everything is drawn in code.
 enum Tex {
+    /// Draws into an explicit 8-bit RGBA bitmap. (UIGraphicsImageRenderer may pick a single-channel
+    /// format for grey-only drawings, which the simulator's Metal driver rejects as a texture.)
     static func render(_ w: Int, _ h: Int, opaque: Bool = false, _ draw: (CGContext) -> Void) -> UIImage {
-        let f = UIGraphicsImageRendererFormat()
-        f.scale = 1
-        f.opaque = opaque
-        return UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: f).image { draw($0.cgContext) }
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let info = opaque ? CGImageAlphaInfo.noneSkipLast.rawValue : CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: cs, bitmapInfo: info) else { return UIImage() }
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: 1, y: -1)
+        UIGraphicsPushContext(ctx)
+        draw(ctx)
+        UIGraphicsPopContext()
+        guard let cg = ctx.makeImage() else { return UIImage() }
+        return UIImage(cgImage: cg)
     }
 
     static func image(width: Int, height: Int, pixels: [UInt8]) -> UIImage {
