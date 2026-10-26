@@ -30,7 +30,13 @@ enum LocationBuilder {
 
         // Ground, street and pavement
         let groundMat = t.backdrop == .city || t.backdrop == .mall ? M.concrete : M.grass
-        ground.append(Geo.box(90, 0.1, 90, groundMat).at(0, -0.06, 0))
+        if t.backdrop == .river {
+            // The city ends at the embankment; the river lies below.
+            ground.append(Geo.box(90, 0.1, 52, groundMat).at(0, -0.06, 19.4))
+            ground.append(Geo.box(90, 0.8, 0.3, M.concrete).at(0, -0.45, -6.75))
+        } else {
+            ground.append(Geo.box(90, 0.1, 90, groundMat).at(0, -0.06, 0))
+        }
         let walk = c.textured("sidewalk", Tex.sidewalk, rough: 0.95, repeatS: 16, repeatT: 2.6)
         ground.append(Geo.box(34, 0.08, 5.2, walk).at(0, 0.04, 4.1))
         ground.append(Geo.box(34, 0.08, 2.0, walk).at(0, 0.04, 0.5))
@@ -71,16 +77,16 @@ enum LocationBuilder {
         }
         // Awning
         let stripes = c.textured("awning\(info.id)", Tex.stripes(t.accent, t.accent2), rough: 0.8, repeatS: 6)
-        casters.append(Geo.box(9.1, 0.06, 1.0, stripes).at(0, 2.95, 1.6).rot(0.32, 0, 0))
-        casters.append(Geo.box(9.1, 0.22, 0.04, stripes).at(0, 2.72, 2.08))
+        casters.append(Geo.box(9.1, 0.06, 0.8, stripes).at(0, 3.2, 1.72).rot(0.3, 0, 0))
+        casters.append(Geo.box(9.1, 0.2, 0.04, stripes).at(0, 3.0, 2.11))
 
         // Counter
         let counterMat = c.pbr(t.counter, rough: 0.5, metal: t.backdrop == .city ? 0.4 : 0.05)
         let topMat = t.backdrop == .city ? M.gold : c.pbr(0xEDE6DA, rough: 0.35)
         casters += [
-            Geo.box(7.9, 1.0, 0.5, counterMat, chamfer: 0.03).at(0, 0.62, 1.2),
-            Geo.box(8.05, 0.07, 0.66, topMat, chamfer: 0.02).at(0, 1.16, 1.2),
-            Geo.box(7.92, 0.1, 0.02, c.pbr(t.accent2, rough: 0.5)).at(0, 0.8, 1.46),
+            Geo.box(7.9, 0.62, 0.5, counterMat, chamfer: 0.03).at(0, 0.43, 1.2),
+            Geo.box(8.05, 0.07, 0.66, topMat, chamfer: 0.02).at(0, 0.775, 1.2),
+            Geo.box(7.92, 0.08, 0.02, c.pbr(t.accent2, rough: 0.5)).at(0, 0.56, 1.46),
         ]
 
         // Sign on the roof and menu board

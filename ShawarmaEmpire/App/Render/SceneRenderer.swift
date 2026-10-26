@@ -113,6 +113,7 @@ final class StationView {
         pickMat.writesToDepthBuffer = false
         let pick = Geo.box(1.9, 2.3, 1.7, pickMat).at(0, 1.15, 0.35)
         pick.castsShadow = false
+        pick.isHidden = true
         node.addChildNode(pick)
         node.enumerateHierarchy { n, _ in n.categoryBitMask |= SceneRenderer.pickMask }
     }
@@ -288,7 +289,7 @@ final class CustomerView {
             if key != bubbleKey, let holder = bubble {
                 bubbleKey = key
                 let img = Tex.orderBubble(c.order, collected: c.collected.count, vip: c.vip, icons: icons)
-                let h: CGFloat = 0.62
+                let h: CGFloat = 0.8
                 let w = h * img.size.width / max(1, img.size.height)
                 bubblePlane?.removeFromParentNode()
                 bar?.parent?.removeFromParentNode()
@@ -321,7 +322,7 @@ final class CustomerView {
             }
             if let holder = bubble {
                 if holder.action(forKey: "pop") == nil { holder.scale = SCNVector3(k, k, k) }
-                holder.position = SCNVector3(0, 1.62 + 0.42 * k, 0)
+                holder.position = SCNVector3(0, 1.6 + 0.55 * k, 0)
                 let f = Float(max(0, min(1, c.patience / c.maxPatience)))
                 bar?.scale = SCNVector3(max(0.02, f), 1, 1)
                 let col: UInt32 = f > 0.5 ? 0x4CAF50 : (f > 0.25 ? 0xFFB300 : 0xE53935)
@@ -543,7 +544,7 @@ final class SceneRenderer {
         shop.intensity = 0
         shop.color = UIColor(hex: 0xFFC27A)
         shop.attenuationStartDistance = 2
-        shop.attenuationEndDistance = 9.5
+        shop.attenuationEndDistance = 7.5
         shop.castsShadow = false
         shopLight.light = shop
         shopLight.position = SCNVector3(0, 2.75, 0.2)
@@ -570,9 +571,9 @@ final class SceneRenderer {
         let cam = rig.camera
         cam.wantsHDR = true
         cam.wantsExposureAdaptation = false
-        cam.exposureOffset = 0
-        cam.bloomIntensity = highQuality ? 0.55 : 0
-        cam.bloomThreshold = 0.85
+        cam.exposureOffset = -0.3
+        cam.bloomIntensity = highQuality ? 0.45 : 0
+        cam.bloomThreshold = 1.0
         cam.bloomBlurRadius = 5
         cam.bloomIterationCount = 1
         cam.screenSpaceAmbientOcclusionIntensity = 0
@@ -630,8 +631,9 @@ final class SceneRenderer {
         let pickMat = SCNMaterial()
         pickMat.colorBufferWriteMask = []
         pickMat.writesToDepthBuffer = false
-        let counter = Geo.box(8.2, 1.4, 1.3, pickMat).at(0, 0.7, 1.15)
+        let counter = Geo.box(8.2, 1.2, 1.3, pickMat).at(0, 0.6, 1.15)
         counter.name = "counter"
+        counter.isHidden = true
         counter.categoryBitMask = SceneRenderer.pickMask
         counter.castsShadow = false
         dynRoot.addChildNode(counter)
@@ -702,7 +704,7 @@ final class SceneRenderer {
                     Geo.box(0.04, 0.2, 0.04, M.black).at(0, 0.24, -0.08),
                     Geo.box(0.3, 0.2, 0.03, screen).at(0, 0.38, -0.08).rot(-0.25, 0, 0),
                 ])
-                reg.position = SCNVector3(-0.55, 1.2, 1.12)
+                reg.position = SCNVector3(-0.55, 0.81, 1.12)
                 reg.eulerAngles.y = 0.25
                 holder.addChildNode(reg)
                 dynRoot.addChildNode(holder)
@@ -836,8 +838,8 @@ final class SceneRenderer {
             c = SIMD3(Layout.stationX[j], 0.14, Layout.stationZ + 0.35)
             size = SIMD2(2.3, 2.3)
         case .counter:
-            c = SIMD3(0, 0.14, 1.2)
-            size = SIMD2(9.2, 1.9)
+            c = SIMD3(0, 0.1, 1.75)
+            size = SIMD2(9.4, 1.5)
         case .courier:
             c = SIMD3(Layout.courierSpot.x, 0.1, Layout.courierSpot.y + 0.4)
             size = SIMD2(2.0, 2.0)
@@ -927,7 +929,7 @@ final class SceneRenderer {
         let k = smooth(fn)
         sun.eulerAngles = SCNVector3(sunPitch + (moonPitch - sunPitch) * k, sunYaw + (moonYaw - sunYaw) * k, 0)
         if let light = sun.light {
-            let dayI = 1500 * pow(1 - fn, 1.6) * (1 - 0.55 * rain)
+            let dayI = 1300 * pow(1 - fn, 1.6) * (1 - 0.55 * rain)
             light.intensity = CGFloat(dayI + 260 * fn)
             let warm = max(0, 1 - abs(fn - 0.35) / 0.35) * (1 - rain)
             let r = 1.0, g = 0.95 - 0.25 * Double(warm), b = 0.86 - 0.4 * Double(warm)
@@ -941,8 +943,8 @@ final class SceneRenderer {
             amb.intensity = CGFloat(200 - 110 * fn + 60 * rain)
             amb.color = fn > 0.5 ? UIColor(hex: 0x6F86C8) : UIColor(hex: 0xB8D4F0)
         }
-        shopLight.light?.intensity = CGFloat(120 + 1100 * fn + 300 * rain)
-        scene.lightingEnvironment.intensity = CGFloat(1.25 - 1.0 * fn) * CGFloat(1 - 0.3 * rain)
+        shopLight.light?.intensity = CGFloat(60 + 520 * fn + 160 * rain)
+        scene.lightingEnvironment.intensity = CGFloat(1.1 - 0.85 * fn) * CGFloat(1 - 0.3 * rain)
 
         guard key != skyKey else { return }
         skyKey = key
@@ -964,7 +966,7 @@ final class SceneRenderer {
         frameNo &+= 1
         let f = frameNo
         let rt = sim.runtimes[loc]
-        let k = max(0.85, min(1.7, rig.distance / 15))
+        let k = max(0.85, min(1.8, rig.distance / 16))
         let raining = rainLevel > 0.4
         for c in rt.customers {
             let v: CustomerView
@@ -1014,6 +1016,7 @@ final class SceneRenderer {
             pickMat.writesToDepthBuffer = false
             let pick = Geo.box(1.6, 2.0, 1.2, pickMat).at(0, 1.0, 0)
             pick.castsShadow = false
+            pick.isHidden = true
             holder.addChildNode(pick)
             holder.enumerateHierarchy { n, _ in n.categoryBitMask |= SceneRenderer.pickMask }
             peopleRoot.addChildNode(holder)
@@ -1104,7 +1107,7 @@ final class SceneRenderer {
             v.pulse()
         case .collected(let l, let j, let w):
             guard l == loc, let v = stations[j] else { return }
-            fly(v.dish, from: v.trayWorld, to: SIMD3(Layout.windowX[w], 1.28, 1.3), duration: 0.38, arc: 0.9)
+            fly(v.dish, from: v.trayWorld, to: SIMD3(Layout.windowX[w], 0.92, 1.3), duration: 0.4, arc: 1.0)
         case .paid(let l, let w, let amount, let vip):
             guard l == loc else { return }
             if w < serveT.count { serveT[w] = 0.45 }
@@ -1229,7 +1232,7 @@ final class SceneRenderer {
         guard fxRoot.childNodes.count < 80 else { return }
         let img = Tex.label(text, color: color)
         let k = CGFloat(max(0.9, rig.distance / 15)) * (big ? 1.45 : 1)
-        let h: CGFloat = 0.4 * k
+        let h: CGFloat = 0.5 * k
         let plane = SCNPlane(width: h * img.size.width / max(1, img.size.height), height: h)
         let m = SCNMaterial()
         m.lightingModel = .constant
@@ -1267,7 +1270,7 @@ final class SceneRenderer {
         let hits = v.hitTest(p, options: [
             SCNHitTestOption.categoryBitMask: SceneRenderer.pickMask,
             SCNHitTestOption.searchMode: SCNHitTestSearchMode.all.rawValue,
-            SCNHitTestOption.ignoreHiddenNodes: true,
+            SCNHitTestOption.ignoreHiddenNodes: false,
         ])
         var best: Pick?
         for h in hits {

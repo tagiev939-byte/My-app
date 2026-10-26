@@ -11,11 +11,11 @@ final class CameraRig {
     let cameraNode = SCNNode()
     let camera = SCNCamera()
 
-    static let home = SIMD3<Float>(0, 0, 1.6)
-    static let homeDistance: Float = 18.5
-    static let minDistance: Float = 7
-    static let maxDistance: Float = 27
-    static let fov: Float = 36
+    static let home = SIMD3<Float>(0, 0, 1.3)
+    static let homeDistance: Float = 22
+    static let minDistance: Float = 8
+    static let maxDistance: Float = 32
+    static let fov: Float = 30
 
     var target = CameraRig.home
     var goalTarget = CameraRig.home
@@ -32,7 +32,7 @@ final class CameraRig {
         camera.fieldOfView = CGFloat(CameraRig.fov)
         camera.projectionDirection = .horizontal
         camera.zNear = 0.2
-        camera.zFar = 260
+        camera.zFar = 300
         cameraNode.camera = camera
         root.addChildNode(yawNode)
         yawNode.addChildNode(pitchNode)
@@ -42,7 +42,7 @@ final class CameraRig {
 
     var pitch: Float {
         let t = (distance - CameraRig.minDistance) / (CameraRig.maxDistance - CameraRig.minDistance)
-        return 0.5 + 0.42 * max(0, min(1, t))
+        return 0.8 + 0.32 * max(0, min(1, t))
     }
 
     func apply() {

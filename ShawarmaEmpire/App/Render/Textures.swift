@@ -147,12 +147,12 @@ enum Tex {
     }
 
     static let sidewalk: UIImage = render(128, 128, opaque: true) { c in
-        c.setFillColor(UIColor(hex: 0xC9C4BA).cgColor)
+        c.setFillColor(UIColor(hex: 0x9C968C).cgColor)
         c.fill(CGRect(x: 0, y: 0, width: 128, height: 128))
         for y in 0..<4 {
             for x in 0..<4 {
-                let shade = 0.94 + 0.06 * CGFloat(hash01(x, y, 3))
-                c.setFillColor(UIColor(red: 0.79 * shade, green: 0.77 * shade, blue: 0.73 * shade, alpha: 1).cgColor)
+                let shade = 0.92 + 0.08 * CGFloat(hash01(x, y, 3))
+                c.setFillColor(UIColor(red: 0.70 * shade, green: 0.68 * shade, blue: 0.64 * shade, alpha: 1).cgColor)
                 c.fill(CGRect(x: x * 32 + 1, y: y * 32 + 1, width: 30, height: 30))
             }
         }

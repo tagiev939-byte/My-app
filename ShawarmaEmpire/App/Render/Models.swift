@@ -238,9 +238,9 @@ enum StationFactory {
                 Geo.cone(0.11, 0.2, 0.64, cMat(d == .shawarmaXL ? 0xA0522D : 0x9C5A2E), segments: 14).at(0, 0.42, 0),
                 Geo.cone(0.112, 0.19, 0.2, cMat(0x7A3E1C), segments: 14).at(0, 0.3, 0)
             )
-            spin.position = SCNVector3(0, 0, 0)
-            app.addChildNode(spin.flattenedClone())
-            parts.spin = app.childNodes.last
+            let spun = merged(spin.childNodes)
+            app.addChildNode(spun)
+            parts.spin = spun
         case .fryer:
             appStatic += [
                 Geo.box(0.8, 0.32, 0.62, M.steel, chamfer: 0.02).at(0, 0.16, 0),
@@ -253,8 +253,9 @@ enum StationFactory {
                 Geo.box(0.03, 0.03, 0.25, M.black).at(-0.17, 0.43, 0.25),
                 Geo.box(0.03, 0.03, 0.25, M.black).at(0.17, 0.43, 0.25)
             )
-            app.addChildNode(bob.flattenedClone())
-            parts.bob = app.childNodes.last
+            let b = merged(bob.childNodes)
+            app.addChildNode(b)
+            parts.bob = b
             parts.steamAt = SCNNode().at(0, 0.4, 0)
         case .drinks:
             let front = MaterialCache.shared.pbr(d.hex, rough: 0.3, emission: d.hex, glow: 0.3).copy() as! SCNMaterial
@@ -330,7 +331,7 @@ enum StationFactory {
                 Geo.cylinder(0.105, 0.03, M.black, segments: 14).at(0, 0.455, 0),
                 Geo.box(0.12, 0.02, 0.03, M.chrome).at(0, 0.2, 0)
             )
-            let s = spin.flattenedClone()
+            let s = merged(spin.childNodes)
             s.position = SCNVector3(-0.15, 0, 0)
             app.addChildNode(s)
             parts.spin = s
@@ -363,8 +364,9 @@ enum StationFactory {
                 Geo.cylinder(0.33, 0.03, MaterialCache.shared.pbr(0x3A3A3A, rough: 0.4, metal: 0.7), segments: 22).at(0, 0.42, 0),
                 Geo.sphere(0.04, M.woodDark, segments: 8).at(0, 0.46, 0)
             )
-            app.addChildNode(lid.flattenedClone())
-            parts.bob = app.childNodes.last
+            let l = merged(lid.childNodes)
+            app.addChildNode(l)
+            parts.bob = l
             app.addChildNode(Geo.cylinder(0.24, 0.02, glowMat, segments: 16).at(0, 0.02, 0))
             parts.glow = glowMat
             parts.steamAt = SCNNode().at(0, 0.5, 0)

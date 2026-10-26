@@ -133,14 +133,14 @@ enum Effects {
         ps.particleImage = Tex.raindrop
         ps.birthRate = 0
         ps.particleLifeSpan = 1.0
-        ps.particleSize = 0.05
+        ps.particleSize = 0.028
         ps.particleVelocity = 16
         ps.particleVelocityVariation = 2
         ps.emittingDirection = SCNVector3(0.08, -1, 0.05)
         ps.spreadingAngle = 2
-        ps.stretchFactor = 0.05
+        ps.stretchFactor = 0.03
         ps.emitterShape = SCNBox(width: 34, height: 0.1, length: 26, chamferRadius: 0)
-        ps.particleColor = UIColor(red: 0.8, green: 0.88, blue: 1, alpha: 0.55)
+        ps.particleColor = UIColor(red: 0.8, green: 0.88, blue: 1, alpha: 0.4)
         ps.blendMode = .alpha
         ps.isLightingEnabled = false
         ps.sortingMode = .none

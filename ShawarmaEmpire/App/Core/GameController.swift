@@ -855,7 +855,7 @@ final class GameController: ObservableObject {
         switch step {
         case 1, 3: return SIMD3(Layout.stationX[0] + StationFactory.appX, 2.5, Layout.stationZ)
         case 2: return L.stations[1].level == 0 ? SIMD3(Layout.stationX[1], 3.1, Layout.stationZ) : nil
-        case 5: return SIMD3(Layout.windowX[0], 2.4, 1.2)
+        case 5: return SIMD3(0.8, 1.9, 1.2)
         default: return nil
         }
     }

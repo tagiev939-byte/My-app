@@ -9,7 +9,7 @@ struct ContentView: View {
 
             if game.showTitle {
                 TitleView().transition(.opacity)
-            } else {
+            } else if game.scenario != "stats" {
                 HUDView().transition(.opacity)
             }
 

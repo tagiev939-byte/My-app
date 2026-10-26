@@ -324,6 +324,7 @@ enum Geo {
 }
 
 /// Merges a set of nodes (with their hierarchy) into one optimized node.
+/// Plain colored materials are baked into vertex colors, so a whole model usually costs 1–3 draw calls.
 func merged(_ nodes: [SCNNode], shadows: Bool = true) -> SCNNode {
     let holder = SCNNode()
     for n in nodes { holder.addChildNode(n) }
@@ -334,6 +335,127 @@ func merged(_ nodes: [SCNNode], shadows: Bool = true) -> SCNNode {
         holder.addChildNode(f)
     }
     let flat = holder.flattenedClone()
+    if let g = flat.geometry, let baked = Bake.vertexColors(g) {
+        flat.geometry = baked
+    }
     flat.castsShadow = shadows
     return flat
+}
+
+/// Bakes solid-color PBR materials into a per-vertex color source and merges their elements.
+enum Bake {
+    private static var materials: [String: SCNMaterial] = [:]
+
+    private static func number(_ p: SCNMaterialProperty, _ fallback: CGFloat) -> CGFloat {
+        if let n = p.contents as? NSNumber { return CGFloat(n.doubleValue) }
+        return fallback
+    }
+
+    private static func isBlack(_ any: Any?) -> Bool {
+        guard let any else { return true }
+        guard let c = any as? UIColor else { return false }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return r + g + b < 0.001
+    }
+
+    private static func isWhite(_ any: Any?) -> Bool {
+        guard let any else { return true }
+        guard let c = any as? UIColor else { return false }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return r > 0.999 && g > 0.999 && b > 0.999
+    }
+
+    private static func linear(_ v: CGFloat) -> Float {
+        let x = Float(max(0, min(1, v)))
+        return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
+    }
+
+    /// Linear RGBA color of a material that can be baked, or nil.
+    private static func bakeable(_ m: SCNMaterial) -> SIMD4<Float>? {
+        guard m.lightingModel == .physicallyBased, m.transparency > 0.999, m.blendMode == .alpha,
+              !m.isDoubleSided, let c = m.diffuse.contents as? UIColor,
+              isBlack(m.emission.contents) || m.emission.intensity == 0,
+              m.normal.contents == nil, isWhite(m.multiply.contents) else { return nil }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        guard a > 0.999 else { return nil }
+        return SIMD4(linear(r), linear(g), linear(b), 1)
+    }
+
+    private static func material(rough: CGFloat, metal: CGFloat) -> SCNMaterial {
+        let key = String(format: "%.2f|%.2f", rough, metal)
+        if let m = materials[key] { return m }
+        let m = SCNMaterial()
+        m.lightingModel = .physicallyBased
+        m.diffuse.contents = UIColor.white
+        m.roughness.contents = NSNumber(value: Double(rough))
+        m.metalness.contents = NSNumber(value: Double(metal))
+        materials[key] = m
+        return m
+    }
+
+    private static func indices(_ e: SCNGeometryElement) -> [UInt32]? {
+        guard e.primitiveType == .triangles else { return nil }
+        let count = e.primitiveCount * 3
+        let bpi = e.bytesPerIndex
+        guard bpi == 2 || bpi == 4, e.data.count >= count * bpi else { return nil }
+        var out = [UInt32](repeating: 0, count: count)
+        e.data.withUnsafeBytes { raw in
+            if bpi == 2 {
+                for k in 0..<count { out[k] = UInt32(raw.load(fromByteOffset: k * 2, as: UInt16.self)) }
+            } else {
+                for k in 0..<count { out[k] = raw.load(fromByteOffset: k * 4, as: UInt32.self) }
+            }
+        }
+        return out
+    }
+
+    static func vertexColors(_ g: SCNGeometry) -> SCNGeometry? {
+        guard let vsrc = g.sources(for: .vertex).first, g.sources(for: .color).isEmpty else { return nil }
+        let n = vsrc.vectorCount
+        let mats = g.materials
+        guard n > 0, !mats.isEmpty, g.elementCount > 0 else { return nil }
+        var colors = [SIMD4<Float>](repeating: SIMD4(1, 1, 1, 1), count: n)
+        var groups: [String: (mat: SCNMaterial, idx: [UInt32])] = [:]
+        var order: [String] = []
+        var keptElements: [SCNGeometryElement] = []
+        var keptMaterials: [SCNMaterial] = []
+        var bakedAny = false
+        for i in 0..<g.elementCount {
+            let e = g.element(at: i)
+            let m = mats[i % mats.count]
+            if let col = bakeable(m), let idx = indices(e), idx.allSatisfy({ Int($0) < n }) {
+                for v in idx { colors[Int(v)] = col }
+                let rough = number(m.roughness, 0.5), metal = number(m.metalness, 0)
+                let key = String(format: "%.2f|%.2f", rough, metal)
+                if groups[key] == nil {
+                    groups[key] = (material(rough: rough, metal: metal), [])
+                    order.append(key)
+                }
+                groups[key]!.idx += idx
+                bakedAny = true
+            } else {
+                keptElements.append(e)
+                keptMaterials.append(m)
+            }
+        }
+        guard bakedAny else { return nil }
+        let data = colors.withUnsafeBufferPointer { Data(buffer: $0) }
+        let csrc = SCNGeometrySource(data: data, semantic: .color, vectorCount: n, usesFloatComponents: true,
+                                     componentsPerVector: 4, bytesPerComponent: 4, dataOffset: 0, dataStride: 16)
+        var elements: [SCNGeometryElement] = []
+        var materials: [SCNMaterial] = []
+        for key in order {
+            guard let grp = groups[key] else { continue }
+            elements.append(SCNGeometryElement(indices: grp.idx, primitiveType: .triangles))
+            materials.append(grp.mat)
+        }
+        elements += keptElements
+        materials += keptMaterials
+        let out = SCNGeometry(sources: g.sources + [csrc], elements: elements)
+        out.materials = materials
+        return out
+    }
 }
