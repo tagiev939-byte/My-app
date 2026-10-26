@@ -334,9 +334,13 @@ func merged(_ nodes: [SCNNode], shadows: Bool = true) -> SCNNode {
         child.removeFromParentNode()
         holder.addChildNode(f)
     }
+    // Every piece gets a color source, so the merged mesh keeps consistent vertex colors.
+    for child in holder.childNodes {
+        if let g = child.geometry, let c = Bake.vertexColors(g, always: true) { child.geometry = c }
+    }
     let flat = holder.flattenedClone()
-    if let g = flat.geometry, let baked = Bake.vertexColors(g) {
-        flat.geometry = baked
+    if let g = flat.geometry, let c = Bake.vertexColors(g, always: false) {
+        flat.geometry = c
     }
     flat.castsShadow = shadows
     return flat
@@ -388,6 +392,7 @@ enum Bake {
         let key = String(format: "%.2f|%.2f", rough, metal)
         if let m = materials[key] { return m }
         let m = SCNMaterial()
+        m.name = "bake:" + key
         m.lightingModel = .physicallyBased
         m.diffuse.contents = UIColor.white
         m.roughness.contents = NSNumber(value: Double(rough))
@@ -404,30 +409,66 @@ enum Bake {
         var out = [UInt32](repeating: 0, count: count)
         e.data.withUnsafeBytes { raw in
             if bpi == 2 {
-                for k in 0..<count { out[k] = UInt32(raw.load(fromByteOffset: k * 2, as: UInt16.self)) }
+                for k in 0..<count { out[k] = UInt32(raw.loadUnaligned(fromByteOffset: k * 2, as: UInt16.self)) }
             } else {
-                for k in 0..<count { out[k] = raw.load(fromByteOffset: k * 4, as: UInt32.self) }
+                for k in 0..<count { out[k] = raw.loadUnaligned(fromByteOffset: k * 4, as: UInt32.self) }
             }
         }
         return out
     }
 
-    static func vertexColors(_ g: SCNGeometry) -> SCNGeometry? {
-        guard let vsrc = g.sources(for: .vertex).first, g.sources(for: .color).isEmpty else { return nil }
+    private static func readColors(_ src: SCNGeometrySource, count n: Int) -> [SIMD4<Float>]? {
+        guard src.usesFloatComponents, src.bytesPerComponent == 4, src.componentsPerVector >= 3,
+              src.vectorCount == n else { return nil }
+        let comps = src.componentsPerVector, stride = src.dataStride, offset = src.dataOffset
+        guard src.data.count >= offset + (n - 1) * stride + comps * 4 else { return nil }
+        var out = [SIMD4<Float>](repeating: SIMD4(1, 1, 1, 1), count: n)
+        src.data.withUnsafeBytes { raw in
+            for i in 0..<n {
+                let b = offset + i * stride
+                let r = raw.loadUnaligned(fromByteOffset: b, as: Float.self)
+                let g = raw.loadUnaligned(fromByteOffset: b + 4, as: Float.self)
+                let bl = raw.loadUnaligned(fromByteOffset: b + 8, as: Float.self)
+                let a = comps >= 4 ? raw.loadUnaligned(fromByteOffset: b + 12, as: Float.self) : 1
+                out[i] = SIMD4(r, g, bl, a)
+            }
+        }
+        return out
+    }
+
+    /// Returns a geometry where solid-color materials are baked and merged, or nil when nothing changes.
+    /// With `always`, a white color source is added even if nothing can be baked.
+    static func vertexColors(_ g: SCNGeometry, always: Bool) -> SCNGeometry? {
+        guard let vsrc = g.sources(for: .vertex).first else { return nil }
         let n = vsrc.vectorCount
         let mats = g.materials
         guard n > 0, !mats.isEmpty, g.elementCount > 0 else { return nil }
-        var colors = [SIMD4<Float>](repeating: SIMD4(1, 1, 1, 1), count: n)
+        var colors: [SIMD4<Float>]
+        let hadColors: Bool
+        if let csrc = g.sources(for: .color).first {
+            guard let read = readColors(csrc, count: n) else { return nil }
+            colors = read
+            hadColors = true
+        } else {
+            colors = [SIMD4<Float>](repeating: SIMD4(1, 1, 1, 1), count: n)
+            hadColors = false
+        }
         var groups: [String: (mat: SCNMaterial, idx: [UInt32])] = [:]
         var order: [String] = []
         var keptElements: [SCNGeometryElement] = []
         var keptMaterials: [SCNMaterial] = []
-        var bakedAny = false
+        var newlyBaked = false
+        var bakeElements = 0
         for i in 0..<g.elementCount {
             let e = g.element(at: i)
             let m = mats[i % mats.count]
-            if let col = bakeable(m), let idx = indices(e), idx.allSatisfy({ Int($0) < n }) {
-                for v in idx { colors[Int(v)] = col }
+            let isBake = m.name?.hasPrefix("bake:") == true
+            let col = isBake ? nil : bakeable(m)
+            if isBake || col != nil, let idx = indices(e), idx.allSatisfy({ Int($0) < n }) {
+                if let col {
+                    for v in idx { colors[Int(v)] = col }
+                    newlyBaked = true
+                }
                 let rough = number(m.roughness, 0.5), metal = number(m.metalness, 0)
                 let key = String(format: "%.2f|%.2f", rough, metal)
                 if groups[key] == nil {
@@ -435,13 +476,14 @@ enum Bake {
                     order.append(key)
                 }
                 groups[key]!.idx += idx
-                bakedAny = true
+                bakeElements += 1
             } else {
                 keptElements.append(e)
                 keptMaterials.append(m)
             }
         }
-        guard bakedAny else { return nil }
+        let merging = bakeElements > order.count
+        guard newlyBaked || merging || (always && !hadColors) else { return nil }
         let data = colors.withUnsafeBufferPointer { Data(buffer: $0) }
         let csrc = SCNGeometrySource(data: data, semantic: .color, vectorCount: n, usesFloatComponents: true,
                                      componentsPerVector: 4, bytesPerComponent: 4, dataOffset: 0, dataStride: 16)
@@ -454,7 +496,8 @@ enum Bake {
         }
         elements += keptElements
         materials += keptMaterials
-        let out = SCNGeometry(sources: g.sources + [csrc], elements: elements)
+        let sources = g.sources.filter { $0.semantic != .color } + [csrc]
+        let out = SCNGeometry(sources: sources, elements: elements)
         out.materials = materials
         return out
     }

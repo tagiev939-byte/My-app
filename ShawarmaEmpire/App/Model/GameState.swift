@@ -55,6 +55,8 @@ struct GameState: Codable {
     var deliveries = 0
     var franchises = 0
     var musicOn = true
+    var bonusDay = 0
+    var bonusStreak = 0
 
     static func fresh(stars: Int = 0, lifetime: Double = 0, franchises: Int = 0) -> GameState {
         var s = GameState()

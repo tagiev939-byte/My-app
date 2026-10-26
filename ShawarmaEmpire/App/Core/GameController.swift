@@ -23,6 +23,12 @@ struct OfflineReport: Identifiable, Equatable {
     let seconds: Double
 }
 
+struct DailyReport: Identifiable, Equatable {
+    let id = UUID()
+    let streak: Int
+    let amount: Double
+}
+
 struct DeliveryHUD: Equatable {
     var delivered = 0
     var required = 0
@@ -76,6 +82,7 @@ final class GameController: ObservableObject {
     @Published var sheet: SheetKind?
     @Published var showTitle: Bool
     @Published var offline: OfflineReport?
+    @Published var daily: DailyReport?
     @Published var hud = HUDState()
     @Published var icons: [String: UIImage] = [:]
     @Published var tick = 0
@@ -398,6 +405,8 @@ final class GameController: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { self?.offline = r }
             }
+        } else {
+            checkDaily(after: 0.9)
         }
         publishHUD()
     }
@@ -407,6 +416,42 @@ final class GameController: ObservableObject {
         Haptics.success()
         renderer.celebrate()
         withAnimation { offline = nil }
+        checkDaily(after: 0.8)
+    }
+
+    // MARK: Daily bonus
+
+    static let dailyMultipliers: [Double] = [1, 1.5, 2, 2.5, 3, 4, 6]
+
+    private static var today: Int {
+        Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 0
+    }
+
+    private func checkDaily(after delay: Double) {
+        guard scenario == nil || scenario == "daily", sim.s.tutorial >= 90, daily == nil else { return }
+        let day = GameController.today
+        guard day != sim.s.bonusDay else { return }
+        let streak = sim.s.bonusDay == day - 1 ? min(7, sim.s.bonusStreak + 1) : 1
+        let base = max(150 * Catalog.locations[loc].tier, sim.incomePerMinute * 4)
+        let amount = GameController.nice(base * GameController.dailyMultipliers[streak - 1])
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { self?.daily = DailyReport(streak: streak, amount: amount) }
+        }
+    }
+
+    func claimDaily() {
+        guard let d = daily else { return }
+        sim.s.bonusDay = GameController.today
+        sim.s.bonusStreak = d.streak
+        sim.s.money += d.amount
+        sim.s.totalEarned += d.amount
+        sim.s.lifetimeEarned += d.amount
+        Sound.shared.play(.cash)
+        Haptics.success()
+        renderer.celebrate()
+        withAnimation { daily = nil }
+        publishHUD()
+        save()
     }
 
     // MARK: Input
@@ -1041,6 +1086,10 @@ final class GameController: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.view?.showsStatistics = true }
         case "autoplay":
             runAutoplay()
+        case "daily":
+            sim.s.bonusDay = GameController.today - 1
+            sim.s.bonusStreak = 3
+            checkDaily(after: 1.0)
         default:
             break
         }

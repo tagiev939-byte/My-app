@@ -15,7 +15,11 @@ final class StationView {
     let node = SCNNode()
     private(set) var parts: StationParts?
     private(set) var cooks: [PersonView] = []
-    private var stock: [SCNNode] = []
+    private let stockNode = SCNNode()
+    private var stockSlots: [SCNVector3] = []
+    private weak var dishModels: DishModels?
+    /// Merged trays of 0...6 portions, shared by all stations cooking the same dish (1 draw call each).
+    private static var stackCache: [Dish: [Int: SCNGeometry]] = [:]
     private var steam: SCNParticleSystem?
     private var barFill: SCNNode?
     private var barMat: SCNMaterial?
@@ -37,14 +41,10 @@ final class StationView {
             let p = StationFactory.make(dish, dishes: dishes)
             node.addChildNode(p.root)
             parts = p
-            for slot in p.stockSlots {
-                let item = dishes.node(dish)
-                item.position = slot
-                item.isHidden = true
-                item.castsShadow = false
-                p.root.addChildNode(item)
-                stock.append(item)
-            }
+            stockSlots = p.stockSlots
+            dishModels = dishes
+            stockNode.castsShadow = false
+            p.root.addChildNode(stockNode)
             if let at = p.steamAt {
                 let ps = Effects.steam()
                 at.addParticleSystem(ps)
@@ -163,17 +163,15 @@ final class StationView {
         }
         for c in cooks { c.work(time: time, active: w, dt: fdt) }
 
-        let n = min(st.stock, stock.count)
+        let n = min(st.stock, stockSlots.count)
         if n != shownStock {
-            for (k, item) in stock.enumerated() {
-                let show = k < n
-                if show && item.isHidden && shownStock >= 0 {
-                    item.scale = SCNVector3(0.2, 0.2, 0.2)
-                    let pop = SCNAction.scale(to: 1, duration: 0.22)
-                    pop.timingMode = .easeOut
-                    item.runAction(pop)
-                }
-                item.isHidden = !show
+            stockNode.geometry = stack(n)
+            if n > shownStock && shownStock >= 0 && stockNode.action(forKey: "pop") == nil {
+                let up = SCNAction.moveBy(x: 0, y: 0.05, z: 0, duration: 0.08)
+                up.timingMode = .easeOut
+                let down = SCNAction.moveBy(x: 0, y: -0.05, z: 0, duration: 0.12)
+                down.timingMode = .easeIn
+                stockNode.runAction(.sequence([up, down]), forKey: "pop")
             }
             shownStock = n
         }
@@ -186,6 +184,19 @@ final class StationView {
             fill.scale = SCNVector3(f, 1, 1)
             barMat?.diffuse.contents = full ? UIColor(hex: 0x66BB6A) : UIColor(hex: rate > 2.5 ? 0xFFD54F : 0xFFB74D)
         }
+    }
+
+    private func stack(_ n: Int) -> SCNGeometry? {
+        guard n > 0, let dishes = dishModels else { return nil }
+        if let g = StationView.stackCache[dish]?[n] { return g }
+        let items = (0..<n).map { k -> SCNNode in
+            let it = dishes.node(dish)
+            it.position = stockSlots[k]
+            return it
+        }
+        let g = merged(items, shadows: false).geometry
+        if let g { StationView.stackCache[dish, default: [:]][n] = g }
+        return g
     }
 
     func pulse() {

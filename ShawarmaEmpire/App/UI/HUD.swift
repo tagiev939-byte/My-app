@@ -17,6 +17,13 @@ struct ContentView: View {
                 IconSheetQA()
             }
 
+            if let d = game.daily {
+                Color.black.opacity(0.5).ignoresSafeArea().transition(.opacity)
+                DailyCard(report: d)
+                    .padding(.horizontal, 28)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+
             if let r = game.offline {
                 Color.black.opacity(0.5).ignoresSafeArea().transition(.opacity)
                 OfflineCard(report: r)
@@ -412,6 +419,52 @@ struct OfflineCard: View {
                 .foregroundColor(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
             PrimaryButton(title: "Забрать", icon: "hand.tap.fill") { game.collectOffline() }
+        }
+        .padding(22)
+        .glass(26)
+    }
+}
+
+// MARK: - Daily bonus
+
+struct DailyCard: View {
+    @EnvironmentObject var game: GameController
+    let report: DailyReport
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "gift.fill")
+                .font(.system(size: 38, weight: .bold))
+                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFE27A), Pal.accentDeep], startPoint: .top, endPoint: .bottom))
+            Text("Ежедневный бонус").font(.game(22, .heavy)).foregroundColor(.white)
+            Text("Заходите каждый день — бонус растёт до ×6")
+                .font(.game(13, .semibold))
+                .foregroundColor(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+            HStack(spacing: 6) {
+                ForEach(1...7, id: \.self) { k in
+                    VStack(spacing: 3) {
+                        ZStack {
+                            Circle().fill(k <= report.streak ? Pal.accent : Color.white.opacity(0.1))
+                            if k < report.streak {
+                                Image(systemName: "checkmark").font(.system(size: 11, weight: .black)).foregroundColor(Pal.ink)
+                            } else if k == report.streak {
+                                Image(systemName: "gift.fill").font(.system(size: 11, weight: .black)).foregroundColor(Pal.ink)
+                            }
+                        }
+                        .frame(width: 30, height: 30)
+                        .overlay(Circle().stroke(k == report.streak ? Color.white : .clear, lineWidth: 2))
+                        Text("×\(GameController.dailyMultipliers[k - 1].formatted())")
+                            .font(.game(9, .heavy))
+                            .foregroundColor(k == report.streak ? Pal.accent : .white.opacity(0.5))
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                CoinView(size: 34)
+                Text(Fmt.money(report.amount)).font(.game(32, .black)).foregroundColor(Pal.accent).monospacedDigit()
+            }
+            PrimaryButton(title: "Забрать · день \(report.streak)", icon: "hand.tap.fill") { game.claimDaily() }
         }
         .padding(22)
         .glass(26)
