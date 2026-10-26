@@ -293,7 +293,7 @@ enum Geo {
             SIMD3(0, -1, t), SIMD3(0, 1, t), SIMD3(0, -1, -t), SIMD3(0, 1, -t),
             SIMD3(t, 0, -1), SIMD3(t, 0, 1), SIMD3(-t, 0, -1), SIMD3(-t, 0, 1),
         ]
-        var rng = SeededRNG(seed: UInt64(seed &* 7919 &+ 17))
+        var rng = SeededRNG(seed: UInt64(bitPattern: Int64(seed &* 7919 &+ 17)))
         for k in 0..<v.count {
             var p = simd_normalize(v[k]) * radius * Float.random(in: 0.82...1.12, using: &rng)
             p.y *= squash
