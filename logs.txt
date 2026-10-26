@@ -1,0 +1,109 @@
+=== shots/autoplay.log
+=== shots/city.log
+=== shots/closeup.log
+=== shots/counter.log
+=== shots/daily.log
+=== shots/delivery.log
+=== shots/dusk.log
+=== shots/early.log
+=== shots/empire.log
+=== shots/gift.log
+=== shots/icons.log
+=== shots/loc1.log
+=== shots/loc2.log
+=== shots/loc3.log
+=== shots/loc4.log
+=== shots/locked.log
+=== shots/menu.log
+=== shots/night.log
+=== shots/play.log
+=== shots/quests.log
+=== shots/rain.log
+=== shots/station.log
+=== shots/stats.log
+=== shots/street.log
+=== shots/title.log
+=== shots/tutorial.log
+=== shots/upgrades.log
+=== shots/autoplay.err
+[QA] scenario=autoplay money=315 customers=8 icons=20 ipm=170 gift=false
+[QA] bake baked=6761 geometries=1461 kept=258
+[QA] AUTOPLAY tut=7 sel=Optional(ShawarmaEmpire.Pick.counter) st0=2 st1=1 cashier=2 taps=9 money=165
+=== shots/city.err
+[QA] scenario=city money=41269 customers=15 icons=20 ipm=2291 gift=false
+[QA] bake baked=11458 geometries=2457 kept=288
+=== shots/closeup.err
+[QA] scenario=closeup money=41668 customers=17 icons=20 ipm=3091 gift=false
+[QA] bake baked=12769 geometries=2713 kept=288
+=== shots/counter.err
+[QA] scenario=counter money=41504 customers=18 icons=20 ipm=3008 gift=false
+[QA] bake baked=9411 geometries=2016 kept=288
+=== shots/daily.err
+[QA] scenario=daily money=41313 customers=17 icons=20 ipm=2559 gift=false
+[QA] bake baked=10474 geometries=2251 kept=288
+=== shots/delivery.err
+[QA] scenario=delivery money=41573 customers=16 icons=20 ipm=2866 gift=false
+[QA] bake baked=11104 geometries=2399 kept=312
+=== shots/dusk.err
+[QA] scenario=dusk money=210083 customers=10 icons=12 ipm=18693 gift=false
+[QA] bake baked=5984 geometries=1389 kept=326
+=== shots/early.err
+[QA] scenario=early money=485 customers=9 icons=20 ipm=130 gift=false
+[QA] bake baked=7365 geometries=1584 kept=258
+=== shots/empire.err
+[QA] scenario=empire money=41293 customers=17 icons=14 ipm=2486 gift=false
+[QA] bake baked=8382 geometries=1809 kept=288
+=== shots/gift.err
+[QA] scenario=gift money=41624 customers=15 icons=20 ipm=3248 gift=true
+[QA] bake baked=9590 geometries=2065 kept=288
+=== shots/icons.err
+[QA] scenario=icons money=41564 customers=16 icons=14 ipm=2947 gift=false
+[QA] bake baked=9254 geometries=2013 kept=288
+=== shots/loc1.err
+[QA] scenario=loc1 money=209379 customers=17 icons=20 ipm=17954 gift=false
+[QA] bake baked=11995 geometries=2513 kept=318
+=== shots/loc2.err
+[QA] scenario=loc2 money=1053010 customers=15 icons=20 ipm=103520 gift=false
+[QA] bake baked=14586 geometries=3106 kept=320
+=== shots/loc3.err
+[QA] scenario=loc3 money=10414830 customers=17 icons=18 ipm=736448 gift=false
+[QA] bake baked=10353 geometries=2320 kept=396
+=== shots/loc4.err
+[QA] scenario=loc4 money=83578901 customers=17 icons=20 ipm=6858201 gift=false
+[QA] bake baked=12833 geometries=2714 kept=351
+=== shots/locked.err
+[QA] scenario=locked money=41524 customers=17 icons=20 ipm=2802 gift=false
+[QA] bake baked=10312 geometries=2175 kept=288
+=== shots/menu.err
+[QA] scenario=menu money=41368 customers=15 icons=20 ipm=2736 gift=false
+[QA] bake baked=8481 geometries=1862 kept=288
+=== shots/night.err
+[QA] scenario=night money=41077 customers=11 icons=20 ipm=2154 gift=false
+[QA] bake baked=9195 geometries=2034 kept=320
+=== shots/play.err
+[QA] scenario=play money=41537 customers=17 icons=6 ipm=3075 gift=false
+[QA] bake baked=5561 geometries=1274 kept=288
+=== shots/quests.err
+[QA] scenario=quests money=41366 customers=16 icons=20 ipm=2555 gift=false
+[QA] bake baked=12101 geometries=2605 kept=288
+=== shots/rain.err
+[QA] scenario=rain money=41294 customers=19 icons=20 ipm=2157 gift=false
+[QA] bake baked=13712 geometries=2896 kept=288
+=== shots/station.err
+[QA] scenario=station money=41572 customers=17 icons=10 ipm=3144 gift=false
+[QA] bake baked=6763 geometries=1497 kept=288
+=== shots/stats.err
+[QA] scenario=stats money=41167 customers=16 icons=10 ipm=2334 gift=false
+[QA] bake baked=6666 geometries=1485 kept=288
+=== shots/street.err
+[QA] scenario=street money=42112 customers=17 icons=20 ipm=4225 gift=false
+[QA] bake baked=11777 geometries=2491 kept=288
+=== shots/title.err
+[QA] scenario=title money=93 customers=9 icons=2 ipm=127 gift=false
+[QA] bake baked=2137 geometries=544 kept=258
+=== shots/tutorial.err
+[QA] scenario=tutorial money=122 customers=9 icons=20 ipm=155 gift=false
+[QA] bake baked=7216 geometries=1529 kept=258
+=== shots/upgrades.err
+[QA] scenario=upgrades money=41828 customers=17 icons=20 ipm=3409 gift=false
+[QA] bake baked=13064 geometries=2785 kept=288
