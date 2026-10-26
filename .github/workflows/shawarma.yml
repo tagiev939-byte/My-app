@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: shawarma-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: ShawarmaEmpire
@@ -123,8 +127,15 @@ jobs:
           rm -f shots/*.log shots/*.err
           find shots -size 0 -delete
           ls -la shots
-          gh release delete shawarma-screens --yes --cleanup-tag || true
-          gh release create shawarma-screens shots/* --prerelease \
-            --target "${{ github.sha }}" \
-            --title "Shawarma QA screenshots" \
-            --notes "Simulator screenshots for ${{ github.sha }}"
+          for attempt in 1 2 3; do
+            gh release delete shawarma-screens --yes --cleanup-tag || true
+            sleep 3
+            if gh release create shawarma-screens shots/* --prerelease \
+                --target "${{ github.sha }}" \
+                --title "Shawarma QA screenshots" \
+                --notes "Simulator screenshots for ${{ github.sha }}"; then
+              exit 0
+            fi
+            echo "publish attempt $attempt failed"; sleep 10
+          done
+          exit 1
