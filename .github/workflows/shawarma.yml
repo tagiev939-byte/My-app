@@ -120,22 +120,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p shots
-          { for f in shots/*.log shots/*.err; do echo "=== $f"; cat "$f"; done; } > shots/logs.txt 2>/dev/null || true
-          grep -E "error:|warning:" build.log | sort -u | head -300 > shots/build-issues.txt 2>/dev/null || true
-          echo "end" >> shots/build-issues.txt
-          rm -f shots/*.log shots/*.err
-          find shots -size 0 -delete
-          ls -la shots
-          for attempt in 1 2 3; do
-            gh release delete shawarma-screens --yes --cleanup-tag || true
-            sleep 3
-            if gh release create shawarma-screens shots/* --prerelease \
-                --target "${{ github.sha }}" \
-                --title "Shawarma QA screenshots" \
-                --notes "Simulator screenshots for ${{ github.sha }}"; then
-              exit 0
-            fi
-            echo "publish attempt $attempt failed"; sleep 10
+          mkdir -p shots qa
+          { for f in shots/*.log shots/*.err; do echo "=== $f"; cat "$f"; done; } > qa/logs.txt 2>/dev/null || true
+          grep -E "error:|warning:" build.log | sort -u | head -300 > qa/build-issues.txt 2>/dev/null || true
+          echo "sha ${{ github.sha }}" >> qa/build-issues.txt
+          for f in shots/*.png; do
+            [ -s "$f" ] || continue
+            sips -s format jpeg -s formatOptions 82 --resampleWidth 800 "$f" --out "qa/$(basename "${f%.png}").jpg" >/dev/null || true
           done
-          exit 1
+          ls -la qa
+          cd qa
+          git init -q
+          git config user.name "qa-bot"
+          git config user.email "qa-bot@users.noreply.github.com"
+          git checkout -q -b shawarma-qa
+          git add -A
+          git commit -q -m "QA screenshots for ${{ github.sha }}"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" shawarma-qa
