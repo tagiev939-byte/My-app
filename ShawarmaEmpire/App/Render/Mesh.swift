@@ -120,7 +120,7 @@ enum Prim {
             let hu = simd_dot(simd_abs(ua), half), hv = simd_dot(simd_abs(va), half), hn = simd_dot(simd_abs(nrm), half)
             func lines(_ hh: Float) -> [Float] {
                 if r <= 0.0001 { return [-hh, hh] }
-                return [-hh, -hh + r * 0.3, -hh + r, hh - r, hh - r * 0.3, hh]
+                return [-hh, -hh + r, hh - r, hh]
             }
             let us = lines(hu), vs = lines(hv)
             var idx: [[UInt32]] = []
