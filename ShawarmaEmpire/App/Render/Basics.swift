@@ -398,12 +398,24 @@ enum Bake {
         return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4)
     }
 
+    /// QA counters: why materials were (not) baked.
+    static var stats: [String: Int] = [:]
+
+    private static func reject(_ r: String) -> SIMD4<Float>? {
+        stats[r, default: 0] += 1
+        return nil
+    }
+
     /// Linear RGBA color of a material that can be baked, or nil.
     private static func bakeable(_ m: SCNMaterial) -> SIMD4<Float>? {
-        guard m.lightingModel == .physicallyBased, m.transparency > 0.999, m.blendMode == .alpha,
-              !m.isDoubleSided, let c = m.diffuse.contents as? UIColor,
-              isBlack(m.emission.contents) || m.emission.intensity == 0,
-              m.normal.contents == nil, isWhite(m.multiply.contents) else { return nil }
+        guard m.lightingModel == .physicallyBased else { return reject("lighting") }
+        guard m.transparency > 0.999, m.blendMode == .alpha else { return reject("blend") }
+        guard !m.isDoubleSided else { return reject("double") }
+        guard let c = m.diffuse.contents as? UIColor else { return reject("diffuse") }
+        guard isBlack(m.emission.contents) || m.emission.intensity == 0 else { return reject("emission") }
+        guard m.normal.contents == nil || isWhite(m.normal.contents) else { return reject("normal:\(type(of: m.normal.contents!))") }
+        guard isWhite(m.multiply.contents) else { return reject("multiply") }
+        stats["ok", default: 0] += 1
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         c.getRed(&r, green: &g, blue: &b, alpha: &a)
         guard a > 0.999 else { return nil }
@@ -467,7 +479,9 @@ enum Bake {
     /// With `always`, a white color source is added even if nothing can be baked.
     static func vertexColors(_ g: SCNGeometry, always: Bool) -> SCNGeometry? {
         // Parametric primitives (SCNBox, SCNSphere…) expose normalized data: only bake real meshes.
+        if isPrimitive(g) { stats["primitive", default: 0] += 1 }
         guard !isPrimitive(g), let vsrc = g.sources(for: .vertex).first else { return nil }
+        stats["geometries", default: 0] += 1
         let n = vsrc.vectorCount
         let mats = g.materials
         guard n > 0, !mats.isEmpty, g.elementCount > 0 else { return nil }

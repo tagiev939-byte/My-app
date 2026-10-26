@@ -1130,7 +1130,8 @@ final class GameController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self else { return }
             let rt = self.sim.runtimes[self.loc]
-            qaLog("scenario=\(sc) money=\(Int(self.sim.s.money)) customers=\(rt.customers.count) icons=\(self.icons.count) ipm=\(Int(self.sim.incomePerMinute))")
+            qaLog("scenario=\(sc) money=\(Int(self.sim.s.money)) customers=\(rt.customers.count) icons=\(self.icons.count) ipm=\(Int(self.sim.incomePerMinute)) gift=\(self.renderer.hasGift)")
+            qaLog("bake \(Bake.stats.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))")
         }
     }
 
