@@ -1,0 +1,130 @@
+name: Shawarma Empire
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ShawarmaEmpire/**'
+      - '.github/workflows/shawarma.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: ShawarmaEmpire
+
+jobs:
+  ipa:
+    name: Unsigned IPA
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app (no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project ShawarmaEmpire.xcodeproj \
+            -target ShawarmaEmpire \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD|\*\*" || true
+          test -d build/Release-iphoneos/ShawarmaEmpire.app
+
+      - name: Package IPA
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Release-iphoneos/ShawarmaEmpire.app Payload/
+          zip -qry ShawarmaEmpire.ipa Payload
+          ls -lh ShawarmaEmpire.ipa
+
+      - name: Publish to "shawarma-latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete shawarma-latest --yes --cleanup-tag || true
+          gh release create shawarma-latest ShawarmaEmpire.ipa \
+            --target "${{ github.sha }}" \
+            --title "Шаурма Империя — последняя сборка" \
+            --notes "Неподписанный IPA. Установите через Sideloadly или AltStore. Сборка: ${{ github.sha }}"
+
+      - name: Publish build errors
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grep -E "error:" build.log | sort -u | head -200 > ipa-errors.txt || true
+          echo "end" >> ipa-errors.txt
+          gh release delete shawarma-ipa-errors --yes --cleanup-tag || true
+          gh release create shawarma-ipa-errors ipa-errors.txt --prerelease --target "${{ github.sha }}" \
+            --title "IPA build errors" --notes "${{ github.sha }}"
+
+  screenshots:
+    name: Simulator screenshots
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project ShawarmaEmpire.xcodeproj \
+            -target ShawarmaEmpire \
+            -configuration Debug \
+            -sdk iphonesimulator ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log | grep -E "error:|BUILD|\*\*" || true
+          test -d build/Debug-iphonesimulator/ShawarmaEmpire.app
+
+      - name: Run QA scenarios
+        run: |
+          APP=build/Debug-iphonesimulator/ShawarmaEmpire.app
+          codesign --force --sign - --timestamp=none "$APP" || true
+          UDID=$(python3 ../.github/scripts/pick_sim.py)
+          echo "Simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p shots
+          for s in title play tutorial station closeup counter locked night dusk rain loc1 loc2 loc3 loc4 street delivery upgrades city empire quests menu icons early stats autoplay; do
+            xcrun simctl launch --terminate-running-process \
+              --stdout="$PWD/shots/$s.log" --stderr="$PWD/shots/$s.err" \
+              "$UDID" com.tagiev.shawarmaempire -scenario "$s" || echo "launch failed: $s"
+            sleep 10
+            xcrun simctl io "$UDID" screenshot "shots/$s.png" || true
+          done
+          ls -la shots
+
+      - name: Publish screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p shots
+          { for f in shots/*.log shots/*.err; do echo "=== $f"; cat "$f"; done; } > shots/logs.txt 2>/dev/null || true
+          grep -E "error:|warning:" build.log | sort -u | head -300 > shots/build-issues.txt 2>/dev/null || true
+          echo "end" >> shots/build-issues.txt
+          rm -f shots/*.log shots/*.err
+          find shots -size 0 -delete
+          ls -la shots
+          gh release delete shawarma-screens --yes --cleanup-tag || true
+          gh release create shawarma-screens shots/* --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Shawarma QA screenshots" \
+            --notes "Simulator screenshots for ${{ github.sha }}"
