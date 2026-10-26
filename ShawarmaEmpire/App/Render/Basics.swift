@@ -334,16 +334,38 @@ func merged(_ nodes: [SCNNode], shadows: Bool = true) -> SCNNode {
         child.removeFromParentNode()
         holder.addChildNode(f)
     }
-    // Every piece gets a color source, so the merged mesh keeps consistent vertex colors.
+    // Pieces that already carry vertex colors (baked models) are merged separately from raw primitives:
+    // primitives must go through flattenedClone first to get real-size vertex data.
+    let raw = SCNNode()
+    let baked = SCNNode()
     for child in holder.childNodes {
-        if let g = child.geometry, let c = Bake.vertexColors(g, always: true) { child.geometry = c }
+        child.removeFromParentNode()
+        if let g = child.geometry, !g.sources(for: .color).isEmpty {
+            baked.addChildNode(child)
+        } else {
+            raw.addChildNode(child)
+        }
     }
-    let flat = holder.flattenedClone()
-    if let g = flat.geometry, let c = Bake.vertexColors(g, always: false) {
-        flat.geometry = c
+    var result: SCNNode
+    if baked.childNodes.isEmpty {
+        result = raw.flattenedClone()
+        if let g = result.geometry, let c = Bake.vertexColors(g, always: false) { result.geometry = c }
+    } else {
+        let h2 = SCNNode()
+        if !raw.childNodes.isEmpty {
+            let f = raw.flattenedClone()
+            if let g = f.geometry, let c = Bake.vertexColors(g, always: true) { f.geometry = c }
+            h2.addChildNode(f)
+        }
+        for c in baked.childNodes {
+            c.removeFromParentNode()
+            h2.addChildNode(c)
+        }
+        result = h2.flattenedClone()
+        if let g = result.geometry, let c = Bake.vertexColors(g, always: false) { result.geometry = c }
     }
-    flat.castsShadow = shadows
-    return flat
+    result.castsShadow = shadows
+    return result
 }
 
 /// Bakes solid-color PBR materials into a per-vertex color source and merges their elements.
@@ -436,10 +458,16 @@ enum Bake {
         return out
     }
 
+    static func isPrimitive(_ g: SCNGeometry) -> Bool {
+        g is SCNBox || g is SCNSphere || g is SCNCylinder || g is SCNCone || g is SCNTube || g is SCNTorus
+            || g is SCNPlane || g is SCNCapsule || g is SCNPyramid || g is SCNFloor || g is SCNText || g is SCNShape
+    }
+
     /// Returns a geometry where solid-color materials are baked and merged, or nil when nothing changes.
     /// With `always`, a white color source is added even if nothing can be baked.
     static func vertexColors(_ g: SCNGeometry, always: Bool) -> SCNGeometry? {
-        guard let vsrc = g.sources(for: .vertex).first else { return nil }
+        // Parametric primitives (SCNBox, SCNSphere…) expose normalized data: only bake real meshes.
+        guard !isPrimitive(g), let vsrc = g.sources(for: .vertex).first else { return nil }
         let n = vsrc.vectorCount
         let mats = g.materials
         guard n > 0, !mats.isEmpty, g.elementCount > 0 else { return nil }
