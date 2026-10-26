@@ -947,7 +947,7 @@ final class SceneRenderer {
     var hasGift: Bool { gift != nil }
 
     /// A balloon with a present drifts over the street; tapping it gives a bonus.
-    func spawnGift(at x: Float? = nil) {
+    func spawnGift(at x: Float? = nil, dir: Float? = nil) {
         guard gift == nil, loc >= 0 else { return }
         let colors: [UInt32] = [0xFF5252, 0x7C4DFF, 0x00BFA5, 0xFFB300, 0xFF4081]
         let col = colors.randomElement() ?? 0xFF5252
@@ -976,7 +976,7 @@ final class SceneRenderer {
         pick.isHidden = true
         n.addChildNode(pick)
         n.enumerateHierarchy { node, _ in node.categoryBitMask |= SceneRenderer.pickMask }
-        giftDir = Bool.random() ? 1 : -1
+        giftDir = dir ?? (Bool.random() ? 1 : -1)
         giftX = x ?? -giftDir * 12
         n.position = SCNVector3(giftX, 4.0, 3.4)
         n.scale = SCNVector3(0.1, 0.1, 0.1)

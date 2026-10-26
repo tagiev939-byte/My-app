@@ -131,6 +131,7 @@ final class GameController: ObservableObject {
     private var wasRaining = false
     private var tutorialTaps = 0
     private var giftCooldown = 45.0
+    private var lastFullHint = -10.0
     private var lastDrag: CGPoint = .zero
     private var panSamples: [(t: CFTimeInterval, d: SIMD3<Float>)] = []
     private weak var view: SCNView?
@@ -511,16 +512,21 @@ final class GameController: ObservableObject {
     }
 
     func helpCook(_ j: Int) {
+        tutorialTaps += 1
         if sim.tap(loc, j) {
             renderer.tapStation(j)
             progressQuests(.tap, 1)
-            tutorialTaps += 1
             if sim.s.playTime - lastSizzle > 0.06 {
                 lastSizzle = sim.s.playTime
                 Sound.shared.play(.sizzle, volume: 0.55)
             }
             Haptics.soft(0.45)
         } else {
+            let st = L.stations[j]
+            if st.level > 0, st.stock >= Rules.capacity(st.level), sim.s.playTime - lastFullHint > 1.2 {
+                lastFullHint = sim.s.playTime
+                renderer.floatText("Всё готово!", at: SIMD3(Layout.stationX[j], 2.3, Layout.stationZ), color: 0x9CE07A)
+            }
             Sound.shared.play(.tap, volume: 0.45)
             Haptics.soft(0.3)
         }
@@ -1111,7 +1117,7 @@ final class GameController: ObservableObject {
         case "autoplay":
             runAutoplay()
         case "gift":
-            renderer.spawnGift(at: 1.5)
+            renderer.spawnGift(at: -7, dir: 1)
         case "daily":
             sim.s.bonusDay = GameController.today - 1
             sim.s.bonusStreak = 3

@@ -497,7 +497,10 @@ enum Bake {
                     for v in idx { colors[Int(v)] = col }
                     newlyBaked = true
                 }
-                let rough = number(m.roughness, 0.5), metal = number(m.metalness, 0)
+                // Few roughness/metalness buckets keep merged meshes at 1–2 draw calls.
+                let r0 = number(m.roughness, 0.5), m0 = number(m.metalness, 0)
+                let rough: CGFloat = r0 < 0.45 ? 0.3 : 0.75
+                let metal: CGFloat = m0 < 0.35 ? 0 : 0.8
                 let key = String(format: "%.2f|%.2f", rough, metal)
                 if groups[key] == nil {
                     groups[key] = (material(rough: rough, metal: metal), [])

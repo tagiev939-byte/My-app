@@ -12,7 +12,7 @@ final class CameraRig {
     let camera = SCNCamera()
 
     static let home = SIMD3<Float>(0, 0, 1.3)
-    static let homeDistance: Float = 22
+    static let homeDistance: Float = 20.5
     static let minDistance: Float = 8
     static let maxDistance: Float = 32
     static let fov: Float = 30
