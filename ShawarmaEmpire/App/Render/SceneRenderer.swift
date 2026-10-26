@@ -3,7 +3,7 @@ import UIKit
 import simd
 
 enum Pick: Equatable {
-    case station(Int), locked(Int), counter, courier
+    case station(Int), locked(Int), counter, courier, gift
 }
 
 // MARK: - Station view
@@ -451,6 +451,12 @@ final class SceneRenderer {
     private let peopleRoot = SCNNode()
     private let carsRoot = SCNNode()
     private let fxRoot = SCNNode()
+    private let giftRoot = SCNNode()
+    private var gift: SCNNode?
+    private var giftX: Float = 0
+    private var giftDir: Float = 1
+    private var flicker: Double = 0
+    private var flickerCooldown: Double = 6
     private let sun = SCNNode()
     private let ambient = SCNNode()
     private let shopLight = SCNNode()
@@ -516,7 +522,7 @@ final class SceneRenderer {
     func setup() {
         let root = scene.rootNode
         root.addChildNode(rig.root)
-        [envRoot, dynRoot, peopleRoot, carsRoot, fxRoot, selection, hint, rainNode].forEach { root.addChildNode($0) }
+        [envRoot, dynRoot, peopleRoot, carsRoot, fxRoot, giftRoot, selection, hint, rainNode].forEach { root.addChildNode($0) }
 
         scene.background.contents = Tex.skyImage(0, rain: 0)
         scene.lightingEnvironment.contents = Tex.sky
@@ -620,6 +626,8 @@ final class SceneRenderer {
         peopleRoot.childNodes.forEach { $0.removeFromParentNode() }
         fxRoot.childNodes.forEach { $0.removeFromParentNode() }
         carsRoot.childNodes.forEach { $0.removeFromParentNode() }
+        giftRoot.childNodes.forEach { $0.removeFromParentNode() }
+        gift = nil
         stations = [nil, nil, nil, nil]
         stationKeys = ["", "", "", ""]
         PersonView.purge()
@@ -855,6 +863,9 @@ final class SceneRenderer {
         case .courier:
             c = SIMD3(Layout.courierSpot.x, 0.1, Layout.courierSpot.y + 0.4)
             size = SIMD2(2.0, 2.0)
+        case .gift:
+            selection.isHidden = true
+            return
         }
         selection.isHidden = false
         selection.simdPosition = c
@@ -927,6 +938,92 @@ final class SceneRenderer {
         updateCourier(sim, dt: dt)
         updateCars(dt)
         updateFlyers()
+        updateGift(dt)
+        updateFlicker(env, night: n, dt: dt)
+    }
+
+    // MARK: Gift balloon
+
+    var hasGift: Bool { gift != nil }
+
+    /// A balloon with a present drifts over the street; tapping it gives a bonus.
+    func spawnGift(at x: Float? = nil) {
+        guard gift == nil, loc >= 0 else { return }
+        let colors: [UInt32] = [0xFF5252, 0x7C4DFF, 0x00BFA5, 0xFFB300, 0xFF4081]
+        let col = colors.randomElement() ?? 0xFF5252
+        let c = MaterialCache.shared
+        let ball = Geo.sphere(0.42, c.pbr(col, rough: 0.22), segments: 18)
+        ball.scale = SCNVector3(1, 1.15, 1)
+        let ribbon = c.pbr(0xFFD54F, rough: 0.4)
+        let body = merged([
+            ball.at(0, 1.3, 0),
+            Geo.cone(0.0, 0.07, 0.1, c.pbr(col, rough: 0.3), segments: 8).at(0, 0.82, 0),
+            Geo.cylinder(0.008, 0.62, M.white, segments: 4).at(0, 0.48, 0),
+            Geo.box(0.4, 0.32, 0.4, c.pbr(0xE53935, rough: 0.5), chamfer: 0.02).at(0, 0.0, 0),
+            Geo.box(0.42, 0.33, 0.08, ribbon).at(0, 0.0, 0),
+            Geo.box(0.08, 0.33, 0.42, ribbon).at(0, 0.0, 0),
+            Geo.torus(0.06, 0.02, ribbon).at(-0.06, 0.2, 0).rot(0, 0, 0.6),
+            Geo.torus(0.06, 0.02, ribbon).at(0.06, 0.2, 0).rot(0, 0, -0.6),
+        ])
+        let shine = Geo.sphere(0.08, c.flat("giftShine", UIColor(white: 1, alpha: 0.85), alpha: true), segments: 6).at(-0.15, 1.5, -0.32)
+        let n = SCNNode()
+        n.name = "gift"
+        n.addChildNode(body)
+        n.addChildNode(shine)
+        let pickMat = SCNMaterial()
+        pickMat.colorBufferWriteMask = []
+        let pick = Geo.sphere(1.0, pickMat, segments: 6).at(0, 0.8, 0)
+        pick.isHidden = true
+        n.addChildNode(pick)
+        n.enumerateHierarchy { node, _ in node.categoryBitMask |= SceneRenderer.pickMask }
+        giftDir = Bool.random() ? 1 : -1
+        giftX = x ?? -giftDir * 12
+        n.position = SCNVector3(giftX, 4.0, 3.4)
+        n.scale = SCNVector3(0.1, 0.1, 0.1)
+        n.runAction(.scale(to: 1, duration: 0.4))
+        giftRoot.addChildNode(n)
+        gift = n
+    }
+
+    private func updateGift(_ dt: Double) {
+        guard let g = gift else { return }
+        giftX += giftDir * Float(dt) * 0.9
+        g.position = SCNVector3(giftX, 4.0 + sin(Float(time) * 1.6) * 0.25, 3.4)
+        g.eulerAngles.z = sin(Float(time) * 1.1) * 0.12
+        if abs(giftX) > 13.5 {
+            g.removeFromParentNode()
+            gift = nil
+        }
+    }
+
+    /// Pops the balloon. Returns where it was.
+    func collectGift() -> SIMD3<Float>? {
+        guard let g = gift else { return nil }
+        let p = g.simdPosition
+        gift = nil
+        burst(Effects.confetti(), at: p + SIMD3(0, 1.2, 0))
+        burst(Effects.sparkle(), at: p + SIMD3(0, 0.3, 0))
+        burst(Effects.coins(), at: p)
+        g.runAction(.sequence([.group([.scale(to: 1.4, duration: 0.12), .fadeOut(duration: 0.12)]), .removeFromParentNode()]))
+        return p
+    }
+
+    // MARK: Neon flicker
+
+    private func updateFlicker(_ env: EnvBuild, night n: Double, dt: Double) {
+        guard n > 0.6, let sign = env.night.first else { return }
+        if flicker > 0 {
+            flicker -= dt
+            let on = Int(flicker * 22) % 3 != 0
+            sign.material.emission.intensity = on ? sign.night : sign.day * 0.4
+            if flicker <= 0 { sign.material.emission.intensity = sign.day + (sign.night - sign.day) * CGFloat(n) }
+        } else {
+            flickerCooldown -= dt
+            if flickerCooldown <= 0 {
+                flickerCooldown = Double.random(in: 9...20)
+                flicker = 0.45
+            }
+        }
     }
 
     private func updateSky(dayTime t: Double, night n: Double) {
@@ -1290,6 +1387,7 @@ final class SceneRenderer {
             while let cur = n {
                 if let name = cur.name {
                     if name == "courier" { return .courier }
+                    if name == "gift" { return .gift }
                     if name.hasPrefix("st:"), let j = Int(name.dropFirst(3)) {
                         if best == nil { best = .station(j) }
                         break

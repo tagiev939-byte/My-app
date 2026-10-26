@@ -97,7 +97,7 @@ struct HUDView: View {
                 case .courier:
                     CourierPanel()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                case nil:
+                case .gift, nil:
                     EmptyView()
                 }
             }

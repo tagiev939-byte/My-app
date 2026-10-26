@@ -106,7 +106,7 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           mkdir -p shots
-          for s in title play tutorial station closeup counter locked night dusk rain loc1 loc2 loc3 loc4 street delivery upgrades city empire quests menu icons early daily stats autoplay; do
+          for s in title play tutorial station closeup counter locked night dusk rain loc1 loc2 loc3 loc4 street delivery upgrades city empire quests menu icons early daily gift stats autoplay; do
             xcrun simctl launch --terminate-running-process \
               --stdout="$PWD/shots/$s.log" --stderr="$PWD/shots/$s.err" \
               "$UDID" com.tagiev.shawarmaempire -scenario "$s" || echo "launch failed: $s"

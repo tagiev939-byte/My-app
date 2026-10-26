@@ -130,6 +130,7 @@ final class GameController: ObservableObject {
     private var wasRush = false
     private var wasRaining = false
     private var tutorialTaps = 0
+    private var giftCooldown = 45.0
     private var lastDrag: CGPoint = .zero
     private var panSamples: [(t: CFTimeInterval, d: SIMD3<Float>)] = []
     private weak var view: SCNView?
@@ -231,6 +232,13 @@ final class GameController: ObservableObject {
 
         sim.step(dt)
         handleEvents()
+        if !showTitle && sim.s.tutorial >= 90 && scenario == nil {
+            giftCooldown -= dt
+            if giftCooldown <= 0 {
+                giftCooldown = Double.random(in: 80...150)
+                renderer.spawnGift()
+            }
+        }
         renderer.update(sim, dt: dt)
         processIcons()
 
@@ -469,6 +477,8 @@ final class GameController: ObservableObject {
             return
         }
         switch pick {
+        case .gift:
+            collectGift()
         case .station(let j):
             if selected != pick {
                 select(pick)
@@ -483,6 +493,20 @@ final class GameController: ObservableObject {
                 Haptics.soft(0.4)
             }
         }
+        publishHUD()
+    }
+
+    func collectGift() {
+        guard renderer.collectGift() != nil else { return }
+        let reward = GameController.nice(max(80 * info.tier, sim.incomePerMinute * 1.5))
+        sim.s.money += reward
+        sim.s.totalEarned += reward
+        sim.s.lifetimeEarned += reward
+        progressQuests(.earn, reward)
+        Sound.shared.play(.pop, volume: 0.8)
+        Sound.shared.play(.cash, volume: 0.7)
+        Haptics.success()
+        showToast("Подарок от фанатов: \(Fmt.gain(reward))!", icon: "gift.fill", tint: Color(hex: 0xFF80AB))
         publishHUD()
     }
 
@@ -1086,6 +1110,8 @@ final class GameController: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.view?.showsStatistics = true }
         case "autoplay":
             runAutoplay()
+        case "gift":
+            renderer.spawnGift(at: 1.5)
         case "daily":
             sim.s.bonusDay = GameController.today - 1
             sim.s.bonusStreak = 3
